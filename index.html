@@ -85,6 +85,7 @@
   <body>
     <div class="panel">
       <h2>Geometry DSL</h2>
+      <textarea id="prompt" placeholder="Describe the geometry in English..." style="height: 80px;"></textarea>
       <textarea id="code">union(
   translate(sphere(1), vec3(1,0,0)),
   box(vec3(0.5,0.5,0.5))
@@ -93,7 +94,6 @@
         <button id="renderBtn" style="flex: 1;">Render</button>
         <button id="generateBtn" style="flex: 1; background: #a78bfa;">Generate</button>
       </div>
-      <textarea id="prompt" placeholder="Describe the geometry in English..." style="height: 80px;"></textarea>
       <div class="hint">Drag to orbit. Wheel to zoom.</div>
       <div class="hint">Errors:</div>
       <pre id="errors"></pre>
