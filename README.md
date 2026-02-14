@@ -1,5 +1,3 @@
-Geometry DSL (educational)
-
 ![Preview](image.png)
 
 Stages:
