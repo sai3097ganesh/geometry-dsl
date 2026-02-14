@@ -1,5 +1,7 @@
 Geometry DSL (educational)
 
+![Preview](image.png)
+
 Stages:
 - Lexer: dsl_lexer.py
 - Parser: dsl_parser.py
