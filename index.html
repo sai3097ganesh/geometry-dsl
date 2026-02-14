@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Geometry DSL Raymarch</title>
+    <style>
+      :root {
+        --bg: #0d0f14;
+        --panel: #151924;
+        --text: #e8edf2;
+        --muted: #9aa6b2;
+        --accent: #6ee7b7;
+      }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        background: radial-gradient(circle at 20% 10%, #1b2230, #0d0f14 70%);
+        color: var(--text);
+        display: grid;
+        grid-template-columns: 360px 1fr;
+        height: 100vh;
+      }
+      .panel {
+        padding: 16px;
+        background: rgba(21, 25, 36, 0.9);
+        backdrop-filter: blur(8px);
+        border-right: 1px solid #1f2533;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      textarea {
+        width: 100%;
+        height: 240px;
+        background: #0f1320;
+        color: var(--text);
+        border: 1px solid #2a3244;
+        border-radius: 8px;
+        padding: 10px;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 13px;
+        resize: vertical;
+      }
+      button {
+        background: var(--accent);
+        color: #0b0f14;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      pre {
+        margin: 0;
+        padding: 10px;
+        background: #0f1320;
+        border-radius: 8px;
+        border: 1px solid #2a3244;
+        color: #fca5a5;
+        min-height: 80px;
+        white-space: pre-wrap;
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .hint {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      @media (max-width: 900px) {
+        body {
+          grid-template-columns: 1fr;
+          grid-template-rows: 340px 1fr;
+        }
+        .panel {
+          border-right: none;
+          border-bottom: 1px solid #1f2533;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <h2>Geometry DSL</h2>
+      <textarea id="code">union(
+  translate(sphere(1), vec3(1,0,0)),
+  box(vec3(0.5,0.5,0.5))
+)</textarea>
+      <button id="renderBtn">Render</button>
+      <div class="hint">Drag to orbit. Wheel to zoom.</div>
+      <pre id="errors"></pre>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const gl = canvas.getContext("webgl2");
+      const errors = document.getElementById("errors");
+      const renderBtn = document.getElementById("renderBtn");
+      const codeEl = document.getElementById("code");
+
+      if (!gl) {
+        errors.textContent = "WebGL2 not supported.";
+      }
+
+      const VERT = `#version 300 es
+      precision highp float;
+      layout(location = 0) in vec2 a_pos;
+      out vec2 v_uv;
+      void main() {
+        v_uv = a_pos * 0.5 + 0.5;
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+      }`;
+
+      const FRAG_HEADER = `#version 300 es
+      precision highp float;
+      in vec2 v_uv;
+      out vec4 outColor;
+      uniform vec2 u_res;
+      uniform vec3 u_camPos;
+      uniform vec3 u_camTarget;
+      uniform vec3 u_camUp;
+
+      `;
+
+      const FRAG_FOOTER = `
+      float raymarch(vec3 ro, vec3 rd) {
+        float t = 0.0;
+        for (int i = 0; i < 128; i++) {
+          vec3 p = ro + rd * t;
+          float d = sdf(p);
+          if (d < 0.001) return t;
+          t += d;
+          if (t > 50.0) break;
+        }
+        return -1.0;
+      }
+
+      vec3 getNormal(vec3 p) {
+        float e = 0.0005;
+        float dx = sdf(p + vec3(e, 0.0, 0.0)) - sdf(p - vec3(e, 0.0, 0.0));
+        float dy = sdf(p + vec3(0.0, e, 0.0)) - sdf(p - vec3(0.0, e, 0.0));
+        float dz = sdf(p + vec3(0.0, 0.0, e)) - sdf(p - vec3(0.0, 0.0, e));
+        return normalize(vec3(dx, dy, dz));
+      }
+
+      void main() {
+        vec2 uv = (v_uv * 2.0 - 1.0);
+        uv.x *= u_res.x / u_res.y;
+
+        vec3 fwd = normalize(u_camTarget - u_camPos);
+        vec3 right = normalize(cross(fwd, u_camUp));
+        vec3 up = normalize(cross(right, fwd));
+
+        vec3 ro = u_camPos;
+        vec3 rd = normalize(fwd + uv.x * right + uv.y * up);
+
+        float t = raymarch(ro, rd);
+        vec3 col;
+        if (t > 0.0) {
+          vec3 p = ro + rd * t;
+          vec3 n = getNormal(p);
+          vec3 lightDir = normalize(vec3(0.6, 0.7, 0.4));
+          float diff = max(dot(n, lightDir), 0.0);
+          vec3 viewDir = normalize(ro - p);
+          vec3 h = normalize(lightDir + viewDir);
+          float spec = pow(max(dot(n, h), 0.0), 64.0);
+          col = vec3(0.2, 0.7, 0.9) * diff + vec3(1.0) * spec;
+        } else {
+          float g = 0.6 + 0.4 * v_uv.y;
+          col = mix(vec3(0.08, 0.1, 0.15), vec3(0.2, 0.25, 0.35), g);
+        }
+        outColor = vec4(col, 1.0);
+      }
+      `;
+
+      let program = null;
+
+      function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(canvas.clientWidth * dpr);
+        canvas.height = Math.floor(canvas.clientHeight * dpr);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+      }
+
+      function compileShader(type, src) {
+        const sh = gl.createShader(type);
+        gl.shaderSource(sh, src);
+        gl.compileShader(sh);
+        if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+          const msg = gl.getShaderInfoLog(sh);
+          gl.deleteShader(sh);
+          return { ok: false, msg };
+        }
+        return { ok: true, sh };
+      }
+
+      function linkProgram(vs, fs) {
+        const p = gl.createProgram();
+        gl.attachShader(p, vs);
+        gl.attachShader(p, fs);
+        gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+          const msg = gl.getProgramInfoLog(p);
+          gl.deleteProgram(p);
+          return { ok: false, msg };
+        }
+        return { ok: true, p };
+      }
+
+      async function render() {
+        errors.textContent = "";
+        const code = codeEl.value;
+        const res = await fetch("http://localhost:8000/compile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errors.textContent = data.detail || data.error || "Compile failed.";
+          return;
+        }
+
+        const frag = FRAG_HEADER + data.glsl + FRAG_FOOTER;
+        const vs = compileShader(gl.VERTEX_SHADER, VERT);
+        if (!vs.ok) {
+          errors.textContent = vs.msg;
+          return;
+        }
+        const fs = compileShader(gl.FRAGMENT_SHADER, frag);
+        if (!fs.ok) {
+          errors.textContent = fs.msg;
+          return;
+        }
+        const linked = linkProgram(vs.sh, fs.sh);
+        if (!linked.ok) {
+          errors.textContent = linked.msg;
+          return;
+        }
+
+        program = linked.p;
+        gl.useProgram(program);
+
+        const quad = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+          -1, -1,
+           1, -1,
+          -1,  1,
+           1,  1,
+        ]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+      }
+
+      let yaw = 0.7;
+      let pitch = 0.4;
+      let dist = 4.0;
+      let isDragging = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      canvas.addEventListener("mousedown", (e) => {
+        isDragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+      });
+      window.addEventListener("mouseup", () => (isDragging = false));
+      window.addEventListener("mousemove", (e) => {
+        if (!isDragging) return;
+        const dx = (e.clientX - lastX) * 0.005;
+        const dy = (e.clientY - lastY) * 0.005;
+        yaw += dx;
+        pitch = Math.max(-1.2, Math.min(1.2, pitch + dy));
+        lastX = e.clientX;
+        lastY = e.clientY;
+      });
+      canvas.addEventListener("wheel", (e) => {
+        dist = Math.max(1.5, Math.min(10.0, dist + e.deltaY * 0.01));
+      });
+
+      function frame() {
+        if (!program) {
+          requestAnimationFrame(frame);
+          return;
+        }
+        resize();
+        gl.useProgram(program);
+
+        const cx = Math.cos(pitch) * Math.cos(yaw) * dist;
+        const cy = Math.sin(pitch) * dist;
+        const cz = Math.cos(pitch) * Math.sin(yaw) * dist;
+        const camPos = [cx, cy, cz];
+
+        gl.uniform2f(gl.getUniformLocation(program, "u_res"), canvas.width, canvas.height);
+        gl.uniform3f(gl.getUniformLocation(program, "u_camPos"), camPos[0], camPos[1], camPos[2]);
+        gl.uniform3f(gl.getUniformLocation(program, "u_camTarget"), 0, 0, 0);
+        gl.uniform3f(gl.getUniformLocation(program, "u_camUp"), 0, 1, 0);
+
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        requestAnimationFrame(frame);
+      }
+
+      renderBtn.addEventListener("click", () => {
+        render().then(() => {
+          if (!program) return;
+        });
+      });
+
+      render().then(frame);
+    </script>
+  </body>
+</html>
