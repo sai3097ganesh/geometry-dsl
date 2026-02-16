@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from typing import List, Tuple
 
@@ -5,6 +6,7 @@ from dsl_ast import Call, Expr, Number, Vec2, Vec3
 from dsl_geom import check_polygon_simple, ensure_ccw, is_convex
 
 Vec2T = Tuple[float, float]
+Vec3T = Tuple[float, float, float]
 
 
 @dataclass
@@ -57,6 +59,18 @@ def _extract_vec2(expr: Expr) -> Vec2T:
     raise ValueError("polygon vertices must be vec2 constants")
 
 
+def _extract_vec3(expr: Expr) -> Vec3T:
+    if isinstance(expr, Vec3):
+        if (
+            not isinstance(expr.x, Number)
+            or not isinstance(expr.y, Number)
+            or not isinstance(expr.z, Number)
+        ):
+            raise ValueError("vec3 components must be numeric constants")
+        return (float(expr.x.value), float(expr.y.value), float(expr.z.value))
+    raise ValueError("path points must be vec3 constants")
+
+
 def _extract_number(expr: Expr, label: str) -> float:
     if not isinstance(expr, Number):
         raise ValueError(f"{label} must be a numeric constant")
@@ -73,6 +87,20 @@ def _extract_polygon(expr: Expr) -> List[Vec2T]:
     if not is_convex(poly):
         raise ValueError("polygon must be convex")
     return ensure_ccw(poly)
+
+
+def _extract_path(expr: Expr) -> List[Vec3T]:
+    if not isinstance(expr, Call):
+        raise ValueError("sweep expects line(...) or polyline(...) as second arg")
+    if expr.name == "line":
+        if len(expr.args) != 2:
+            raise ValueError("line expects 2 args")
+        return [_extract_vec3(expr.args[0]), _extract_vec3(expr.args[1])]
+    if expr.name == "polyline":
+        if len(expr.args) < 2:
+            raise ValueError("polyline expects at least 2 args")
+        return [_extract_vec3(a) for a in expr.args]
+    raise ValueError("sweep expects line(...) or polyline(...) as second arg")
 
 
 def _hexagon_vertices(radius: float) -> List[Vec2T]:
@@ -120,6 +148,34 @@ def _ir_prism_sdf(poly: List[Vec2T], h: IR, px: IR, py: IR, axis: IR) -> IR:
     return ir_binary("max", max_d, d_axis, "f32")
 
 
+def _ir_dot3_const(vec: IR, cx: float, cy: float, cz: float) -> IR:
+    vx = ir_unary("vec_x", vec, "f32")
+    vy = ir_unary("vec_y", vec, "f32")
+    vz = ir_unary("vec_z", vec, "f32")
+    dx = ir_mul(ir_const(cx), vx)
+    dy = ir_mul(ir_const(cy), vy)
+    dz = ir_mul(ir_const(cz), vz)
+    return ir_binary("add", ir_binary("add", dx, dy, "f32"), dz, "f32")
+
+
+def _ir_clamp01(val: IR) -> IR:
+    return ir_binary("min", ir_binary("max", val, ir_const(0.0), "f32"), ir_const(1.0), "f32")
+
+
+def _ir_smin(a: IR, b: IR, k: float) -> IR:
+    if k <= 0.0:
+        return ir_binary("min", a, b, "f32")
+    inv_k = 1.0 / k
+    diff = ir_binary("sub", a, b, "f32")
+    adiff = ir_unary("abs", diff, "f32")
+    h_raw = ir_binary("sub", ir_const(k), adiff, "f32")
+    h = ir_mul(ir_binary("max", h_raw, ir_const(0.0), "f32"), ir_const(inv_k))
+    h2 = ir_mul(h, h)
+    h3 = ir_mul(h2, h)
+    smooth = ir_mul(ir_const(k * (1.0 / 6.0)), h3)
+    return ir_binary("sub", ir_binary("min", a, b, "f32"), smooth, "f32")
+
+
 def lower(expr: Expr) -> IR:
     if isinstance(expr, Number):
         return ir_const(expr.value)
@@ -131,6 +187,8 @@ def lower(expr: Expr) -> IR:
             r = lower(expr.args[0])
             p = ir_var("p")
             return ir_binary("sub", ir_unary("length", p, "f32"), r, "f32")
+        if name == "circle":
+            raise ValueError("circle must be used with sweep or extrude")
         if name == "cylinder":
             r = lower(expr.args[0])
             h = lower(expr.args[1])
@@ -178,14 +236,31 @@ def lower(expr: Expr) -> IR:
             return ir_binary("max", a, ir_unary("neg", b, "f32"), "f32")
         if name == "polygon":
             raise ValueError("polygon must be used with extrude")
+        if name == "line" or name == "polyline":
+            raise ValueError("path must be used with sweep")
         if name == "extrude":
-            poly = _extract_polygon(expr.args[0])
+            profile = expr.args[0]
             h = lower(expr.args[1])
             p = ir_var("p")
             px = ir_unary("vec_x", p, "f32")
             py = ir_unary("vec_y", p, "f32")
             pz = ir_unary("vec_z", p, "f32")
-            return _ir_prism_sdf(poly, h, px, py, pz)
+            if isinstance(profile, Call) and profile.name == "polygon":
+                poly = _extract_polygon(profile)
+                return _ir_prism_sdf(poly, h, px, py, pz)
+            if isinstance(profile, Call) and profile.name == "circle":
+                if len(profile.args) != 1:
+                    raise ValueError("circle expects 1 arg")
+                r = ir_const(_extract_number(profile.args[0], "circle arg 0"))
+                radial = ir_unary("length", ir_vec3(px, py, ir_const(0.0)), "f32")
+                dx = ir_binary("sub", radial, r, "f32")
+                dz = ir_binary("sub", ir_unary("abs", pz, "f32"), h, "f32")
+                inside = ir_binary("min", ir_binary("max", dx, dz, "f32"), ir_const(0.0), "f32")
+                max_dx = ir_binary("max", dx, ir_const(0.0), "f32")
+                max_dz = ir_binary("max", dz, ir_const(0.0), "f32")
+                out = ir_unary("length", ir_vec3(max_dx, max_dz, ir_const(0.0)), "f32")
+                return ir_binary("add", inside, out, "f32")
+            raise ValueError("extrude expects polygon(...) or circle(...) as first arg")
         if name == "hex_nut":
             if len(expr.args) != 3:
                 raise ValueError("hex_nut expects 3 args")
@@ -205,6 +280,125 @@ def lower(expr: Expr) -> IR:
             hole_half_h = half_h + 0.01
             hole = Call("cylinder", [Number(inner_r), Number(hole_half_h)])
             return lower(Call("difference", [prism, hole]))
+        if name == "sweep":
+            if len(expr.args) != 2:
+                raise ValueError("sweep expects 2 args")
+            profile = expr.args[0]
+            path_expr = expr.args[1]
+            path = _extract_path(path_expr)
+            if len(path) < 2:
+                raise ValueError("sweep path must have at least 2 points")
+
+            profile_kind = ""
+            profile_poly: List[Vec2T] = []
+            profile_radius = 0.0
+            if isinstance(profile, Call) and profile.name == "polygon":
+                profile_kind = "polygon"
+                profile_poly = _extract_polygon(profile)
+            elif isinstance(profile, Call) and profile.name == "circle":
+                if len(profile.args) != 1:
+                    raise ValueError("circle expects 1 arg")
+                profile_kind = "circle"
+                profile_radius = _extract_number(profile.args[0], "circle arg 0")
+            else:
+                raise ValueError("sweep expects polygon(...) or circle(...) as first arg")
+
+            segments = []
+            for i in range(len(path) - 1):
+                ax, ay, az = path[i]
+                bx, by, bz = path[i + 1]
+                abx = bx - ax
+                aby = by - ay
+                abz = bz - az
+                len2 = abx * abx + aby * aby + abz * abz
+                if len2 == 0.0:
+                    continue
+                tlen = math.sqrt(len2)
+                tx = abx / tlen
+                ty = aby / tlen
+                tz = abz / tlen
+                segments.append((ax, ay, az, bx, by, bz, abx, aby, abz, len2, tx, ty, tz))
+
+            if not segments:
+                raise ValueError("sweep path has no valid segments")
+
+            use_round_segments = profile_kind == "circle"
+            join_smooth: List[float] = []
+            if use_round_segments:
+                for i in range(1, len(segments)):
+                    _, _, _, _, _, _, _, _, _, _, ptx, pty, ptz = segments[i - 1]
+                    _, _, _, _, _, _, _, _, _, _, ctx, cty, ctz = segments[i]
+                    dot = ptx * ctx + pty * cty + ptz * ctz
+                    dot = max(-1.0, min(1.0, dot))
+                    k = profile_radius * max(0.0, (1.0 - dot) * 0.5)
+                    join_smooth.append(k)
+
+            p = ir_var("p")
+            cur = None
+            last_idx = len(segments) - 1
+            for idx, seg_data in enumerate(segments):
+                ax, ay, az, bx, by, bz, abx, aby, abz, len2, tx, ty, tz = seg_data
+                inv_len2 = 1.0 / len2
+
+                upx, upy, upz = 0.0, 1.0, 0.0
+                if abs(tx * upx + ty * upy + tz * upz) > 0.999:
+                    upx, upy, upz = 1.0, 0.0, 0.0
+
+                nx = upy * tz - upz * ty
+                ny = upz * tx - upx * tz
+                nz = upx * ty - upy * tx
+                nlen = math.sqrt(nx * nx + ny * ny + nz * nz)
+                if nlen == 0.0:
+                    continue
+                nx /= nlen
+                ny /= nlen
+                nz /= nlen
+
+                bxv = ty * nz - tz * ny
+                byv = tz * nx - tx * nz
+                bzv = tx * ny - ty * nx
+
+                a_vec = ir_vec3(ir_const(ax), ir_const(ay), ir_const(az))
+                ab_vec = ir_vec3(ir_const(abx), ir_const(aby), ir_const(abz))
+                pa = ir_vec_op("vec_sub", p, a_vec)
+                dot_pa_ab = _ir_dot3_const(pa, abx, aby, abz)
+                t_raw = ir_mul(dot_pa_ab, ir_const(inv_len2))
+                t_clamped = _ir_clamp01(t_raw)
+
+                ab_scaled = ir_vec3(
+                    ir_mul(ir_const(abx), t_clamped),
+                    ir_mul(ir_const(aby), t_clamped),
+                    ir_mul(ir_const(abz), t_clamped),
+                )
+                c = ir_vec_op("vec_add", a_vec, ab_scaled)
+                q = ir_vec_op("vec_sub", p, c)
+
+                px = _ir_dot3_const(q, nx, ny, nz)
+                py = _ir_dot3_const(q, bxv, byv, bzv)
+                qt = _ir_dot3_const(q, tx, ty, tz)
+
+                if profile_kind == "circle":
+                    if use_round_segments and idx not in (0, last_idx):
+                        qlen = ir_unary("length", ir_vec3(px, py, qt), "f32")
+                        seg = ir_binary("sub", qlen, ir_const(profile_radius), "f32")
+                    else:
+                        radial = ir_unary("length", ir_vec3(px, py, ir_const(0.0)), "f32")
+                        profile_d = ir_binary("sub", radial, ir_const(profile_radius), "f32")
+                        seg = ir_binary("max", profile_d, ir_unary("abs", qt, "f32"), "f32")
+                else:
+                    profile_d = _ir_polygon_sdf(profile_poly, px, py)
+                    seg = ir_binary("max", profile_d, ir_unary("abs", qt, "f32"), "f32")
+
+                if cur is None:
+                    cur = seg
+                else:
+                    if use_round_segments:
+                        k = join_smooth[idx - 1] if idx - 1 < len(join_smooth) else 0.0
+                        cur = _ir_smin(cur, seg, k) if k > 0.0 else ir_binary("min", cur, seg, "f32")
+                    else:
+                        cur = ir_binary("min", cur, seg, "f32")
+
+            return cur
         if name == "rotate":
             g = lower(expr.args[0])
             angles = lower(expr.args[1])

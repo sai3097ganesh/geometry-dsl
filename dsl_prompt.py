@@ -7,10 +7,13 @@ def dsl_system_prompt() -> str:
 
 Primitives:
   sphere(r)           -- SDF sphere of radius r
+  circle(r)           -- 2D circle profile for sweep
   cylinder(r, h)      -- Capped cylinder, radius r, half-height h (Y axis)
   box(vec3)           -- AABB box with half-size vec3
-  polygon(vec2, ...)  -- Convex, non-self-intersecting polygon (2D)
+  polygon(vec2, ...)  -- Convex, non-self-intersecting polygon (2D), also a sweep profile
   hex_nut(ro, ri, h)  -- Hex nut (hex prism with cylindrical hole), ro outer radius, ri hole radius, half-height h (Y axis)
+  line(a, b)          -- Path line from vec3 a to vec3 b
+  polyline(a, b, ...) -- Path polyline through vec3 points
 
 Operations:
   union(a, b, ...)    -- Combine shapes (min distance)
@@ -18,7 +21,8 @@ Operations:
   offset(shape, d)    -- Expand or contract shape by distance d
   rotate(shape, v)    -- Rotate shape by vec3 angles in degrees
   translate(shape, v) -- Move shape by vector v
-  extrude(poly, h)    -- Extrude 2D polygon to prism with half-height h
+  extrude(profile, h) -- Extrude polygon or circle with half-height h
+  sweep(profile, path) -- Sweep a 2D profile along a path
   vec2(x, y)          -- Create a 2D vector
   vec3(x, y, z)       -- Create a 3D vector
 
@@ -49,4 +53,10 @@ Examples:
 
   English: "a hex nut"
   DSL: hex_nut(1, 0.4, 0.4)
+
+  English: "a swept tube"
+  DSL: sweep(circle(0.2), line(vec3(-1,0,0), vec3(1,0,0)))
+
+  English: "a smoothed sweep"
+  DSL: sweep(circle(0.2), polyline(vec3(0,0,0), vec3(1,0,0), vec3(1,1,0)))
 """
