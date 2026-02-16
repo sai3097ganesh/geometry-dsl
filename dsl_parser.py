@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List
 
-from dsl_ast import Call, Expr, Number, Vec3
+from dsl_ast import Call, Expr, Number, Vec2, Vec3
 from dsl_lexer import Lexer, Token
 
 
@@ -53,6 +53,10 @@ class Parser:
                 if len(args) != 3:
                     raise ParserError("vec3 expects 3 arguments")
                 return Vec3(args[0], args[1], args[2])
+            if name == "vec2":
+                if len(args) != 2:
+                    raise ParserError("vec2 expects 2 arguments")
+                return Vec2(args[0], args[1])
             return Call(name, args)
         raise ParserError(f"Unexpected token {tok.kind} at {tok.line}:{tok.col}")
 

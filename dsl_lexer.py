@@ -53,6 +53,8 @@ class Lexer:
         start_i = self.i
         start_col = self.col
         saw_dot = False
+        if self._peek() == "-":
+            self._advance()
         while True:
             ch = self._peek()
             if ch.isdigit():
@@ -89,7 +91,15 @@ class Lexer:
             if not ch:
                 tokens.append(Token("EOF", "", None, self.line, self.col))
                 return tokens
-            if ch.isdigit() or (ch == "." and self.i + 1 < len(self.src) and self.src[self.i + 1].isdigit()):
+            if (
+                ch.isdigit()
+                or (ch == "." and self.i + 1 < len(self.src) and self.src[self.i + 1].isdigit())
+                or (
+                    ch == "-"
+                    and self.i + 1 < len(self.src)
+                    and (self.src[self.i + 1].isdigit() or self.src[self.i + 1] == ".")
+                )
+            ):
                 tokens.append(self._number())
                 continue
             if ch.isalpha() or ch == "_":

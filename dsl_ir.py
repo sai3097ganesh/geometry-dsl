@@ -1,7 +1,10 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Tuple
 
-from dsl_ast import Call, Expr, Number, Vec3
+from dsl_ast import Call, Expr, Number, Vec2, Vec3
+from dsl_geom import check_polygon_simple, ensure_ccw, is_convex
+
+Vec2T = Tuple[float, float]
 
 
 @dataclass
@@ -44,6 +47,26 @@ def replace_var(node: IR, name: str, repl: IR) -> IR:
     if node.op == "var":
         return repl
     return IR(node.op, [replace_var(a, name, repl) for a in node.args], node.type, node.value)
+
+
+def _extract_vec2(expr: Expr) -> Vec2T:
+    if isinstance(expr, Vec2):
+        if not isinstance(expr.x, Number) or not isinstance(expr.y, Number):
+            raise ValueError("vec2 components must be numeric constants")
+        return (float(expr.x.value), float(expr.y.value))
+    raise ValueError("polygon vertices must be vec2 constants")
+
+
+def _extract_polygon(expr: Expr) -> List[Vec2T]:
+    if not isinstance(expr, Call) or expr.name != "polygon":
+        raise ValueError("extrude expects polygon(...) as first arg")
+    if len(expr.args) < 3:
+        raise ValueError("polygon expects at least 3 args")
+    poly = [_extract_vec2(a) for a in expr.args]
+    check_polygon_simple(poly)
+    if not is_convex(poly):
+        raise ValueError("polygon must be convex")
+    return ensure_ccw(poly)
 
 
 def lower(expr: Expr) -> IR:
@@ -102,6 +125,43 @@ def lower(expr: Expr) -> IR:
             a = lower(expr.args[0])
             b = lower(expr.args[1])
             return ir_binary("max", a, ir_unary("neg", b, "f32"), "f32")
+        if name == "polygon":
+            raise ValueError("polygon must be used with extrude")
+        if name == "extrude":
+            poly = _extract_polygon(expr.args[0])
+            h = lower(expr.args[1])
+            p = ir_var("p")
+            px = ir_unary("vec_x", p, "f32")
+            py = ir_unary("vec_y", p, "f32")
+            pz = ir_unary("vec_z", p, "f32")
+
+            max_d = None
+            for i in range(len(poly)):
+                x1, y1 = poly[i]
+                x2, y2 = poly[(i + 1) % len(poly)]
+                ex, ey = x2 - x1, y2 - y1
+                nx, ny = ey, -ex
+                nlen = (nx * nx + ny * ny) ** 0.5
+                if nlen == 0:
+                    continue
+                nx /= nlen
+                ny /= nlen
+
+                dx = ir_binary("sub", px, ir_const(x1), "f32")
+                dy = ir_binary("sub", py, ir_const(y1), "f32")
+                dot = ir_binary(
+                    "add",
+                    ir_mul(ir_const(nx), dx),
+                    ir_mul(ir_const(ny), dy),
+                    "f32",
+                )
+                max_d = dot if max_d is None else ir_binary("max", max_d, dot, "f32")
+
+            if max_d is None:
+                raise ValueError("polygon has invalid edges")
+
+            dz = ir_binary("sub", ir_unary("abs", pz, "f32"), h, "f32")
+            return ir_binary("max", max_d, dz, "f32")
         if name == "rotate":
             g = lower(expr.args[0])
             angles = lower(expr.args[1])

@@ -1,12 +1,15 @@
 import math
-from typing import Callable, Tuple, Union
+from typing import Callable, List, Tuple, Union
 
-from dsl_ast import Call, Expr, Number, Vec3
+from dsl_ast import Call, Expr, Number, Vec2 as ASTVec2, Vec3
+from dsl_geom import check_polygon_simple, ensure_ccw, is_convex
 
 
 Vec = Tuple[float, float, float]
+Vec2T = Tuple[float, float]
+Polygon2D = List[Vec2T]
 Field = Callable[[Vec], float]
-Value = Union[float, Vec, Field]
+Value = Union[float, Vec, Vec2T, Polygon2D, Field]
 
 
 class EvalError(Exception):
@@ -60,6 +63,40 @@ def sdf_cylinder(r: float, h: float) -> Field:
     return field
 
 
+def _polygon_sdf(poly: Polygon2D, p: Vec2T) -> float:
+    check_polygon_simple(poly)
+    if not is_convex(poly):
+        raise EvalError("polygon must be convex")
+
+    poly = ensure_ccw(list(poly))
+
+    max_d = -1e9
+    for i in range(len(poly)):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % len(poly)]
+        ex, ey = x2 - x1, y2 - y1
+        nx, ny = ey, -ex
+        nlen = (nx * nx + ny * ny) ** 0.5
+        if nlen == 0:
+            continue
+        nx /= nlen
+        ny /= nlen
+        dx, dy = p[0] - x1, p[1] - y1
+        d = nx * dx + ny * dy
+        if d > max_d:
+            max_d = d
+    return max_d
+
+
+def sdf_extrude(poly: Polygon2D, h: float) -> Field:
+    def field(p: Vec) -> float:
+        d2 = _polygon_sdf(poly, (p[0], p[1]))
+        dz = abs(p[2]) - h
+        return max(d2, dz)
+
+    return field
+
+
 def rotate_vec_deg(p: Vec, angles_deg: Vec) -> Vec:
     ax = -math.radians(angles_deg[0])
     ay = -math.radians(angles_deg[1])
@@ -89,6 +126,12 @@ def eval_expr(expr: Expr) -> Value:
         if not isinstance(x, float) or not isinstance(y, float) or not isinstance(z, float):
             raise EvalError("vec3 components must be numbers")
         return (x, y, z)
+    if isinstance(expr, ASTVec2):
+        x = eval_expr(expr.x)
+        y = eval_expr(expr.y)
+        if not isinstance(x, float) or not isinstance(y, float):
+            raise EvalError("vec2 components must be numbers")
+        return (x, y)
     if isinstance(expr, Call):
         name = expr.name
         args = [eval_expr(a) for a in expr.args]
@@ -98,6 +141,11 @@ def eval_expr(expr: Expr) -> Value:
             return sdf_cylinder(args[0], args[1])  # type: ignore[index]
         if name == "box":
             return sdf_box(args[0])  # type: ignore[index]
+        if name == "polygon":
+            return args  # type: ignore[return-value]
+        if name == "extrude":
+            poly, h = args  # type: ignore[misc]
+            return sdf_extrude(poly, h)
         if name == "union":
             if len(args) < 2:
                 raise EvalError("union expects at least 2 args")

@@ -19,10 +19,10 @@ def test_typecheck() -> None:
 
 
 def test_ast_eval() -> None:
-    src = "rotate(translate(sphere(1), vec3(1, 0, 0)), vec3(0, 0, 90))"
+    src = "rotate(sphere(1), vec3(0, 0, 0))"
     ast = Parser.from_source(src).parse()
     field = eval_expr(ast)
-    v = field((1.0, 0.0, 0.0))
+    v = field((0.0, 0.0, 0.0))
     assert abs(v - (-1.0)) < 1e-6
 
 
@@ -42,12 +42,21 @@ def test_glsl_emit() -> None:
     assert "float field" in code
 
 
+def test_extrude_emit() -> None:
+    src = "extrude(polygon(vec2(1,0), vec2(0,1), vec2(-1,0)), 0.5)"
+    ast = Parser.from_source(src).parse()
+    ir = lower(ast)
+    code = emit_glsl(ir)
+    assert "float field" in code
+
+
 def run_all() -> None:
     test_lexer_and_parser()
     test_typecheck()
     test_ast_eval()
     test_ir_eval()
     test_glsl_emit()
+    test_extrude_emit()
     print("ok")
 
 

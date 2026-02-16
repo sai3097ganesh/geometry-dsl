@@ -17,6 +17,8 @@ def emit_expr(node: IR) -> str:
     if op == "var":
         return "p"
     if op == "add":
+        if op == "abs":
+            return f"abs({emit_expr(node.args[0])})"
         return f"({emit_expr(node.args[0])} + {emit_expr(node.args[1])})"
     if op == "sub":
         return f"({emit_expr(node.args[0])} - {emit_expr(node.args[1])})"

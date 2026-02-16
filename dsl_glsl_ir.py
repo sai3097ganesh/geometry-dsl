@@ -28,6 +28,8 @@ def emit_expr(node: IR) -> str:
         return f"min({emit_expr(node.args[0])}, {emit_expr(node.args[1])})"
     if op == "max":
         return f"max({emit_expr(node.args[0])}, {emit_expr(node.args[1])})"
+    if op == "abs":
+        return f"abs({emit_expr(node.args[0])})"
     if op == "length":
         return f"length({emit_expr(node.args[0])})"
     if op == "sin":

@@ -15,9 +15,15 @@ class Vec3:
 
 
 @dataclass
+class Vec2:
+    x: "Expr"
+    y: "Expr"
+
+
+@dataclass
 class Call:
     name: str
     args: List["Expr"]
 
 
-Expr = Union[Number, Vec3, Call]
+Expr = Union[Number, Vec3, Vec2, Call]
