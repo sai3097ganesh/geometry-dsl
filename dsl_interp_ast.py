@@ -97,6 +97,23 @@ def sdf_extrude(poly: Polygon2D, h: float) -> Field:
     return field
 
 
+def _hexagon_vertices(radius: float) -> Polygon2D:
+    c = 0.8660254037844386
+    return [
+        (radius, 0.0),
+        (radius * 0.5, radius * c),
+        (-radius * 0.5, radius * c),
+        (-radius, 0.0),
+        (-radius * 0.5, -radius * c),
+        (radius * 0.5, -radius * c),
+    ]
+
+
+def _hexagon_polygon_expr(radius: float) -> Call:
+    poly = _hexagon_vertices(radius)
+    return Call("polygon", [ASTVec2(Number(x), Number(y)) for x, y in poly])
+
+
 def rotate_vec_deg(p: Vec, angles_deg: Vec) -> Vec:
     ax = -math.radians(angles_deg[0])
     ay = -math.radians(angles_deg[1])
@@ -163,5 +180,21 @@ def eval_expr(expr: Expr) -> Value:
         if name == "offset":
             g, d = args  # type: ignore[misc]
             return lambda p: g(p) - d
+        if name == "hex_nut":
+            if len(args) != 3:
+                raise EvalError("hex_nut expects 3 args")
+            outer_r, inner_r, half_h = args  # type: ignore[misc]
+            if not isinstance(outer_r, float) or not isinstance(inner_r, float) or not isinstance(half_h, float):
+                raise EvalError("hex_nut args must be numbers")
+            prism = Call(
+                "rotate",
+                [
+                    Call("extrude", [_hexagon_polygon_expr(outer_r), Number(half_h)]),
+                    Vec3(Number(90.0), Number(0.0), Number(0.0)),
+                ],
+            )
+            hole_half_h = half_h + 0.01
+            hole = Call("cylinder", [Number(inner_r), Number(hole_half_h)])
+            return eval_expr(Call("difference", [prism, hole]))
         raise EvalError(f"Unknown function {name}")
     raise EvalError("Unknown expression")

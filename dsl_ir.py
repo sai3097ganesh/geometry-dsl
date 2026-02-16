@@ -57,6 +57,12 @@ def _extract_vec2(expr: Expr) -> Vec2T:
     raise ValueError("polygon vertices must be vec2 constants")
 
 
+def _extract_number(expr: Expr, label: str) -> float:
+    if not isinstance(expr, Number):
+        raise ValueError(f"{label} must be a numeric constant")
+    return float(expr.value)
+
+
 def _extract_polygon(expr: Expr) -> List[Vec2T]:
     if not isinstance(expr, Call) or expr.name != "polygon":
         raise ValueError("extrude expects polygon(...) as first arg")
@@ -67,6 +73,51 @@ def _extract_polygon(expr: Expr) -> List[Vec2T]:
     if not is_convex(poly):
         raise ValueError("polygon must be convex")
     return ensure_ccw(poly)
+
+
+def _hexagon_vertices(radius: float) -> List[Vec2T]:
+    c = 0.8660254037844386
+    return [
+        (radius, 0.0),
+        (radius * 0.5, radius * c),
+        (-radius * 0.5, radius * c),
+        (-radius, 0.0),
+        (-radius * 0.5, -radius * c),
+        (radius * 0.5, -radius * c),
+    ]
+
+
+def _ir_polygon_sdf(poly: List[Vec2T], px: IR, py: IR) -> IR:
+    max_d = None
+    for i in range(len(poly)):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % len(poly)]
+        ex, ey = x2 - x1, y2 - y1
+        nx, ny = ey, -ex
+        nlen = (nx * nx + ny * ny) ** 0.5
+        if nlen == 0:
+            continue
+        nx /= nlen
+        ny /= nlen
+
+        dx = ir_binary("sub", px, ir_const(x1), "f32")
+        dy = ir_binary("sub", py, ir_const(y1), "f32")
+        dot = ir_binary(
+            "add",
+            ir_mul(ir_const(nx), dx),
+            ir_mul(ir_const(ny), dy),
+            "f32",
+        )
+        max_d = dot if max_d is None else ir_binary("max", max_d, dot, "f32")
+    if max_d is None:
+        raise ValueError("polygon has invalid edges")
+    return max_d
+
+
+def _ir_prism_sdf(poly: List[Vec2T], h: IR, px: IR, py: IR, axis: IR) -> IR:
+    max_d = _ir_polygon_sdf(poly, px, py)
+    d_axis = ir_binary("sub", ir_unary("abs", axis, "f32"), h, "f32")
+    return ir_binary("max", max_d, d_axis, "f32")
 
 
 def lower(expr: Expr) -> IR:
@@ -134,34 +185,26 @@ def lower(expr: Expr) -> IR:
             px = ir_unary("vec_x", p, "f32")
             py = ir_unary("vec_y", p, "f32")
             pz = ir_unary("vec_z", p, "f32")
+            return _ir_prism_sdf(poly, h, px, py, pz)
+        if name == "hex_nut":
+            if len(expr.args) != 3:
+                raise ValueError("hex_nut expects 3 args")
+            outer_r = _extract_number(expr.args[0], "hex_nut arg 0")
+            inner_r = _extract_number(expr.args[1], "hex_nut arg 1")
+            half_h = _extract_number(expr.args[2], "hex_nut arg 2")
 
-            max_d = None
-            for i in range(len(poly)):
-                x1, y1 = poly[i]
-                x2, y2 = poly[(i + 1) % len(poly)]
-                ex, ey = x2 - x1, y2 - y1
-                nx, ny = ey, -ex
-                nlen = (nx * nx + ny * ny) ** 0.5
-                if nlen == 0:
-                    continue
-                nx /= nlen
-                ny /= nlen
-
-                dx = ir_binary("sub", px, ir_const(x1), "f32")
-                dy = ir_binary("sub", py, ir_const(y1), "f32")
-                dot = ir_binary(
-                    "add",
-                    ir_mul(ir_const(nx), dx),
-                    ir_mul(ir_const(ny), dy),
-                    "f32",
-                )
-                max_d = dot if max_d is None else ir_binary("max", max_d, dot, "f32")
-
-            if max_d is None:
-                raise ValueError("polygon has invalid edges")
-
-            dz = ir_binary("sub", ir_unary("abs", pz, "f32"), h, "f32")
-            return ir_binary("max", max_d, dz, "f32")
+            poly = _hexagon_vertices(outer_r)
+            poly_args = [Vec2(Number(x), Number(y)) for x, y in poly]
+            prism = Call(
+                "rotate",
+                [
+                    Call("extrude", [Call("polygon", poly_args), Number(half_h)]),
+                    Vec3(Number(90.0), Number(0.0), Number(0.0)),
+                ],
+            )
+            hole_half_h = half_h + 0.01
+            hole = Call("cylinder", [Number(inner_r), Number(hole_half_h)])
+            return lower(Call("difference", [prism, hole]))
         if name == "rotate":
             g = lower(expr.args[0])
             angles = lower(expr.args[1])

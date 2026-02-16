@@ -10,6 +10,7 @@ Primitives:
   cylinder(r, h)      -- Capped cylinder, radius r, half-height h (Y axis)
   box(vec3)           -- AABB box with half-size vec3
   polygon(vec2, ...)  -- Convex, non-self-intersecting polygon (2D)
+  hex_nut(ro, ri, h)  -- Hex nut (hex prism with cylindrical hole), ro outer radius, ri hole radius, half-height h (Y axis)
 
 Operations:
   union(a, b, ...)    -- Combine shapes (min distance)
@@ -45,4 +46,7 @@ Examples:
 
   English: "a hexagonal prism"
   DSL: extrude(polygon(vec2(1,0), vec2(0.5,0.866), vec2(-0.5,0.866), vec2(-1,0), vec2(-0.5,-0.866), vec2(0.5,-0.866)), 0.5)
+
+  English: "a hex nut"
+  DSL: hex_nut(1, 0.4, 0.4)
 """

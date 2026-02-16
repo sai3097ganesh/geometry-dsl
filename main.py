@@ -50,6 +50,14 @@ def test_extrude_emit() -> None:
     assert "float field" in code
 
 
+def test_hex_nut_emit() -> None:
+    src = "hex_nut(1, 0.4, 0.5)"
+    ast = Parser.from_source(src).parse()
+    ir = lower(ast)
+    code = emit_glsl(ir)
+    assert "float field" in code
+
+
 def run_all() -> None:
     test_lexer_and_parser()
     test_typecheck()
@@ -57,6 +65,7 @@ def run_all() -> None:
     test_ir_eval()
     test_glsl_emit()
     test_extrude_emit()
+    test_hex_nut_emit()
     print("ok")
 
 
