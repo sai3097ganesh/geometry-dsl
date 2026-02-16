@@ -53,6 +53,27 @@ def lower(expr: Expr) -> IR:
             r = lower(expr.args[0])
             p = ir_var("p")
             return ir_binary("sub", ir_unary("length", p, "f32"), r, "f32")
+        if name == "cylinder":
+            r = lower(expr.args[0])
+            h = lower(expr.args[1])
+            p = ir_var("p")
+            p_abs = ir_unary("vec_abs", p, "vec3")
+            y = ir_unary("vec_y", p_abs, "f32")
+            neg_y = ir_unary("neg", y, "f32")
+            abs_y = ir_binary("max", y, neg_y, "f32")
+            dy = ir_binary("sub", abs_y, h, "f32")
+
+            x = ir_unary("vec_x", p, "f32")
+            z = ir_unary("vec_z", p, "f32")
+            radial_vec = ir_vec3(x, ir_const(0.0), z)
+            radial = ir_unary("length", radial_vec, "f32")
+            dx = ir_binary("sub", radial, r, "f32")
+
+            inside = ir_binary("min", ir_binary("max", dx, dy, "f32"), ir_const(0.0), "f32")
+            max_dx = ir_binary("max", dx, ir_const(0.0), "f32")
+            max_dy = ir_binary("max", dy, ir_const(0.0), "f32")
+            out = ir_unary("length", ir_vec3(max_dx, max_dy, ir_const(0.0)), "f32")
+            return ir_binary("add", inside, out, "f32")
         if name == "box":
             size = lower(expr.args[0])
             p = ir_var("p")

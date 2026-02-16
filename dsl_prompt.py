@@ -7,10 +7,11 @@ def dsl_system_prompt() -> str:
 
 Primitives:
   sphere(r)           -- SDF sphere of radius r
+  cylinder(r, h)      -- Capped cylinder, radius r, half-height h (Y axis)
   box(vec3)           -- AABB box with half-size vec3
 
 Operations:
-  union(a, b)         -- Combine a and b (min distance)
+  union(a, b, ...)    -- Combine shapes (min distance)
   difference(a, b)    -- Subtract b from a
   offset(shape, d)    -- Expand or contract shape by distance d
   translate(shape, v) -- Move shape by vector v
@@ -31,4 +32,7 @@ Examples:
   
   English: "a sphere with a box subtracted"
   DSL: difference(sphere(2), box(vec3(1,1,1)))
+
+  English: "a short cylinder"
+  DSL: cylinder(1, 0.5)
 """

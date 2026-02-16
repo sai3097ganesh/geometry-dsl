@@ -20,6 +20,7 @@ FIELD = Type("field")
 
 SIGS: Dict[str, Tuple[List[Type], Type]] = {
     "sphere": ([F32], FIELD),
+    "cylinder": ([F32, F32], FIELD),
     "box": ([VEC3], FIELD),
     "difference": ([FIELD, FIELD], FIELD),
     "translate": ([FIELD, VEC3], FIELD),

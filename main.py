@@ -35,7 +35,7 @@ def test_ir_eval() -> None:
 
 
 def test_glsl_emit() -> None:
-    src = "union(sphere(1), box(vec3(1,1,1)))"
+    src = "union(sphere(1), cylinder(0.5, 1), box(vec3(1,1,1)))"
     ast = Parser.from_source(src).parse()
     ir = lower(ast)
     code = emit_glsl(ir)

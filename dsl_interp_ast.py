@@ -47,6 +47,18 @@ def sdf_box(size: Vec) -> Field:
     return field
 
 
+def sdf_cylinder(r: float, h: float) -> Field:
+    def field(p: Vec) -> float:
+        x, y, z = p
+        dx = (x * x + z * z) ** 0.5 - r
+        dy = abs(y) - h
+        inside = min(max(dx, dy), 0.0)
+        out = (max(dx, 0.0) ** 2 + max(dy, 0.0) ** 2) ** 0.5
+        return inside + out
+
+    return field
+
+
 def eval_expr(expr: Expr) -> Value:
     if isinstance(expr, Number):
         return expr.value
@@ -62,6 +74,8 @@ def eval_expr(expr: Expr) -> Value:
         args = [eval_expr(a) for a in expr.args]
         if name == "sphere":
             return sdf_sphere(args[0])  # type: ignore[index]
+        if name == "cylinder":
+            return sdf_cylinder(args[0], args[1])  # type: ignore[index]
         if name == "box":
             return sdf_box(args[0])  # type: ignore[index]
         if name == "union":
