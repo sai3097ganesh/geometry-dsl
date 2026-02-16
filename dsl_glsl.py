@@ -20,6 +20,8 @@ def emit_expr(node: IR) -> str:
         return f"({emit_expr(node.args[0])} + {emit_expr(node.args[1])})"
     if op == "sub":
         return f"({emit_expr(node.args[0])} - {emit_expr(node.args[1])})"
+    if op == "mul":
+        return f"({emit_expr(node.args[0])} * {emit_expr(node.args[1])})"
     if op == "neg":
         return f"(-{emit_expr(node.args[0])})"
     if op == "min":
@@ -30,6 +32,10 @@ def emit_expr(node: IR) -> str:
         return f"abs({emit_expr(node.args[0])})"
     if op == "length":
         return f"length({emit_expr(node.args[0])})"
+    if op == "sin":
+        return f"sin({emit_expr(node.args[0])})"
+    if op == "cos":
+        return f"cos({emit_expr(node.args[0])})"
     if op == "vec_add":
         return f"({emit_expr(node.args[0])} + {emit_expr(node.args[1])})"
     if op == "vec_sub":

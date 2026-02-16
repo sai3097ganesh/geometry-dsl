@@ -1,3 +1,4 @@
+import math
 from typing import Callable, Tuple, Union
 
 from dsl_ast import Call, Expr, Number, Vec3
@@ -59,6 +60,25 @@ def sdf_cylinder(r: float, h: float) -> Field:
     return field
 
 
+def rotate_vec_deg(p: Vec, angles_deg: Vec) -> Vec:
+    ax = -math.radians(angles_deg[0])
+    ay = -math.radians(angles_deg[1])
+    az = -math.radians(angles_deg[2])
+
+    x, y, z = p
+
+    cx, sx = math.cos(ax), math.sin(ax)
+    y, z = y * cx - z * sx, y * sx + z * cx
+
+    cy, sy = math.cos(ay), math.sin(ay)
+    x, z = x * cy + z * sy, -x * sy + z * cy
+
+    cz, sz = math.cos(az), math.sin(az)
+    x, y = x * cz - y * sz, x * sz + y * cz
+
+    return (x, y, z)
+
+
 def eval_expr(expr: Expr) -> Value:
     if isinstance(expr, Number):
         return expr.value
@@ -86,6 +106,9 @@ def eval_expr(expr: Expr) -> Value:
         if name == "difference":
             a, b = args  # type: ignore[misc]
             return lambda p: max(a(p), -b(p))
+        if name == "rotate":
+            g, v = args  # type: ignore[misc]
+            return lambda p: g(rotate_vec_deg(p, v))
         if name == "translate":
             g, v = args  # type: ignore[misc]
             return lambda p: g(v_sub(p, v))

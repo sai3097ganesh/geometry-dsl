@@ -36,6 +36,10 @@ def ir_vec_op(op: str, a: IR, b: IR) -> IR:
     return IR(op, [a, b], "vec3")
 
 
+def ir_mul(a: IR, b: IR) -> IR:
+    return ir_binary("mul", a, b, "f32")
+
+
 def replace_var(node: IR, name: str, repl: IR) -> IR:
     if node.op == "var":
         return repl
@@ -98,6 +102,41 @@ def lower(expr: Expr) -> IR:
             a = lower(expr.args[0])
             b = lower(expr.args[1])
             return ir_binary("max", a, ir_unary("neg", b, "f32"), "f32")
+        if name == "rotate":
+            g = lower(expr.args[0])
+            angles = lower(expr.args[1])
+            p = ir_var("p")
+
+            deg_to_rad = ir_const(0.017453292519943295)
+            ax = ir_mul(ir_unary("neg", ir_unary("vec_x", angles, "f32"), "f32"), deg_to_rad)
+            ay = ir_mul(ir_unary("neg", ir_unary("vec_y", angles, "f32"), "f32"), deg_to_rad)
+            az = ir_mul(ir_unary("neg", ir_unary("vec_z", angles, "f32"), "f32"), deg_to_rad)
+
+            cx = ir_unary("cos", ax, "f32")
+            sx = ir_unary("sin", ax, "f32")
+            cy = ir_unary("cos", ay, "f32")
+            sy = ir_unary("sin", ay, "f32")
+            cz = ir_unary("cos", az, "f32")
+            sz = ir_unary("sin", az, "f32")
+
+            x0 = ir_unary("vec_x", p, "f32")
+            y0 = ir_unary("vec_y", p, "f32")
+            z0 = ir_unary("vec_z", p, "f32")
+
+            y1 = ir_binary("sub", ir_mul(y0, cx), ir_mul(z0, sx), "f32")
+            z1 = ir_binary("add", ir_mul(y0, sx), ir_mul(z0, cx), "f32")
+            x1 = x0
+
+            x2 = ir_binary("add", ir_mul(x1, cy), ir_mul(z1, sy), "f32")
+            z2 = ir_binary("add", ir_mul(ir_unary("neg", x1, "f32"), sy), ir_mul(z1, cy), "f32")
+            y2 = y1
+
+            x3 = ir_binary("sub", ir_mul(x2, cz), ir_mul(y2, sz), "f32")
+            y3 = ir_binary("add", ir_mul(x2, sz), ir_mul(y2, cz), "f32")
+            z3 = z2
+
+            rotated = ir_vec3(x3, y3, z3)
+            return replace_var(g, "p", rotated)
         if name == "translate":
             g = lower(expr.args[0])
             v = lower(expr.args[1])

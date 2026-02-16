@@ -14,6 +14,7 @@ Operations:
   union(a, b, ...)    -- Combine shapes (min distance)
   difference(a, b)    -- Subtract b from a
   offset(shape, d)    -- Expand or contract shape by distance d
+  rotate(shape, v)    -- Rotate shape by vec3 angles in degrees
   translate(shape, v) -- Move shape by vector v
   vec3(x, y, z)       -- Create a 3D vector
 
@@ -35,4 +36,7 @@ Examples:
 
   English: "a short cylinder"
   DSL: cylinder(1, 0.5)
+
+  English: "a tilted cylinder"
+  DSL: rotate(cylinder(1, 1), vec3(30, 0, 0))
 """

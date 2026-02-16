@@ -1,3 +1,4 @@
+import math
 from typing import Dict, Tuple
 
 from dsl_ir import IR
@@ -23,6 +24,8 @@ def eval_ir(node: IR, env: Dict[str, Vec]) -> float | Vec:
         return float(eval_ir(node.args[0], env)) + float(eval_ir(node.args[1], env))
     if op == "sub":
         return float(eval_ir(node.args[0], env)) - float(eval_ir(node.args[1], env))
+    if op == "mul":
+        return float(eval_ir(node.args[0], env)) * float(eval_ir(node.args[1], env))
     if op == "neg":
         return -float(eval_ir(node.args[0], env))
     if op == "min":
@@ -34,6 +37,10 @@ def eval_ir(node: IR, env: Dict[str, Vec]) -> float | Vec:
     if op == "length":
         v = eval_ir(node.args[0], env)
         return (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) ** 0.5
+    if op == "sin":
+        return math.sin(float(eval_ir(node.args[0], env)))
+    if op == "cos":
+        return math.cos(float(eval_ir(node.args[0], env)))
     if op == "vec_add":
         a = eval_ir(node.args[0], env)
         b = eval_ir(node.args[1], env)

@@ -19,7 +19,7 @@ def test_typecheck() -> None:
 
 
 def test_ast_eval() -> None:
-    src = "translate(sphere(1), vec3(1, 0, 0))"
+    src = "rotate(translate(sphere(1), vec3(1, 0, 0)), vec3(0, 0, 90))"
     ast = Parser.from_source(src).parse()
     field = eval_expr(ast)
     v = field((1.0, 0.0, 0.0))

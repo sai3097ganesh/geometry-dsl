@@ -23,6 +23,7 @@ SIGS: Dict[str, Tuple[List[Type], Type]] = {
     "cylinder": ([F32, F32], FIELD),
     "box": ([VEC3], FIELD),
     "difference": ([FIELD, FIELD], FIELD),
+    "rotate": ([FIELD, VEC3], FIELD),
     "translate": ([FIELD, VEC3], FIELD),
     "offset": ([FIELD, F32], FIELD),
     "vec3": ([F32, F32, F32], VEC3),
