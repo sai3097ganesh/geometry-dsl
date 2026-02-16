@@ -221,7 +221,7 @@
       async function render() {
         errors.textContent = "";
         const code = codeEl.value;
-        const res = await fetch("http://localhost:8000/compile", {
+        const res = await fetch("http://localhost:8001/compile", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code }),
@@ -329,7 +329,7 @@
         generateBtn.disabled = true;
         generateBtn.textContent = "Generating...";
         try {
-          const res = await fetch("http://localhost:8000/generate_dsl", {
+          const res = await fetch("http://localhost:8001/generate_dsl", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ prompt }),

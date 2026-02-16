@@ -21,7 +21,6 @@ FIELD = Type("field")
 SIGS: Dict[str, Tuple[List[Type], Type]] = {
     "sphere": ([F32], FIELD),
     "box": ([VEC3], FIELD),
-    "union": ([FIELD, FIELD], FIELD),
     "difference": ([FIELD, FIELD], FIELD),
     "translate": ([FIELD, VEC3], FIELD),
     "offset": ([FIELD, F32], FIELD),
@@ -38,6 +37,14 @@ def type_of(expr: Expr) -> Type:
                 raise TypeError("vec3 components must be f32")
         return VEC3
     if isinstance(expr, Call):
+        if expr.name == "union":
+            if len(expr.args) < 2:
+                raise TypeError("union expects at least 2 args")
+            for idx, arg in enumerate(expr.args):
+                got = type_of(arg)
+                if got != FIELD:
+                    raise TypeError(f"union arg {idx} expects field, got {got.name}")
+            return FIELD
         if expr.name not in SIGS:
             raise TypeError(f"Unknown function {expr.name}")
         expected_args, ret = SIGS[expr.name]

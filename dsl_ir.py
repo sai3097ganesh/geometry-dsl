@@ -67,9 +67,12 @@ def lower(expr: Expr) -> IR:
             d2 = ir_binary("min", max2, ir_const(0.0), "f32")
             return ir_binary("add", d1, d2, "f32")
         if name == "union":
-            a = lower(expr.args[0])
-            b = lower(expr.args[1])
-            return ir_binary("min", a, b, "f32")
+            if len(expr.args) < 2:
+                raise ValueError("union expects at least 2 args")
+            cur = lower(expr.args[0])
+            for arg in expr.args[1:]:
+                cur = ir_binary("min", cur, lower(arg), "f32")
+            return cur
         if name == "difference":
             a = lower(expr.args[0])
             b = lower(expr.args[1])

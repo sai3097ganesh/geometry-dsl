@@ -65,8 +65,10 @@ def eval_expr(expr: Expr) -> Value:
         if name == "box":
             return sdf_box(args[0])  # type: ignore[index]
         if name == "union":
-            a, b = args  # type: ignore[misc]
-            return lambda p: min(a(p), b(p))
+            if len(args) < 2:
+                raise EvalError("union expects at least 2 args")
+            fields = args  # type: ignore[assignment]
+            return lambda p: min(f(p) for f in fields)
         if name == "difference":
             a, b = args  # type: ignore[misc]
             return lambda p: max(a(p), -b(p))

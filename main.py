@@ -13,7 +13,7 @@ def test_lexer_and_parser() -> None:
 
 
 def test_typecheck() -> None:
-    src = "union(sphere(1), sphere(2))"
+    src = "union(sphere(1), sphere(2), sphere(3))"
     ast = Parser.from_source(src).parse()
     assert type_of(ast) == FIELD
 
