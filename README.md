@@ -1,4 +1,6 @@
-![Preview](image.png)
+
+![Preview 1](image.png)
+![Preview 2](image2.png)
 
 Stages:
 - Lexer: dsl_lexer.py

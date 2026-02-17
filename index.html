@@ -177,12 +177,12 @@
         if (t > 0.0) {
           vec3 p = ro + rd * t;
           vec3 n = getNormal(p);
-          vec3 lightDir = normalize(vec3(0.6, 0.7, 0.4));
+          // Headlight: light always from camera to surface point
+          vec3 lightDir = normalize(ro - p);
           float diff = max(dot(n, lightDir), 0.0);
-          vec3 viewDir = normalize(ro - p);
-          vec3 h = normalize(lightDir + viewDir);
-          float spec = pow(max(dot(n, h), 0.0), 64.0);
-          col = vec3(0.2, 0.7, 0.9) * diff + vec3(1.0) * spec;
+          float ambient = 0.18;
+          float lighting = ambient + (1.0 - ambient) * diff;
+          col = vec3(0.2, 0.7, 0.9) * lighting;
         } else {
           float g = 0.6 + 0.4 * v_uv.y;
           col = mix(vec3(0.08, 0.1, 0.15), vec3(0.2, 0.25, 0.35), g);
@@ -303,22 +303,44 @@
       let yaw = 0.7;
       let pitch = 0.4;
       let dist = 4.0;
+      let target = [0.0, 0.0, 0.0];
       let isDragging = false;
+      let isPanning = false;
       let lastX = 0;
       let lastY = 0;
 
       canvas.addEventListener("mousedown", (e) => {
-        isDragging = true;
+        const panMode = e.button === 2 || e.shiftKey;
+        isPanning = panMode;
+        isDragging = !panMode;
         lastX = e.clientX;
         lastY = e.clientY;
       });
+      canvas.addEventListener("contextmenu", (e) => e.preventDefault());
       window.addEventListener("mouseup", () => (isDragging = false));
       window.addEventListener("mousemove", (e) => {
-        if (!isDragging) return;
+        if (!isDragging && !isPanning) return;
         const dx = (e.clientX - lastX) * 0.005;
         const dy = (e.clientY - lastY) * 0.005;
-        yaw += dx;
-        pitch = Math.max(-1.2, Math.min(1.2, pitch + dy));
+        if (isPanning) {
+          const panScale = dist * 0.5;
+          const cx = Math.cos(pitch) * Math.cos(yaw);
+          const cy = Math.sin(pitch);
+          const cz = Math.cos(pitch) * Math.sin(yaw);
+          const fwd = [cx, cy, cz];
+          const right = [fwd[2], 0.0, -fwd[0]];
+          const up = [
+            -fwd[0] * fwd[1],
+            1.0 - fwd[1] * fwd[1],
+            -fwd[2] * fwd[1],
+          ];
+          target[0] += (-dx * right[0] + dy * up[0]) * panScale;
+          target[1] += (-dx * right[1] + dy * up[1]) * panScale;
+          target[2] += (-dx * right[2] + dy * up[2]) * panScale;
+        } else {
+          yaw += dx;
+          pitch = Math.max(-1.2, Math.min(1.2, pitch + dy));
+        }
         lastX = e.clientX;
         lastY = e.clientY;
       });
@@ -337,11 +359,11 @@
         const cx = Math.cos(pitch) * Math.cos(yaw) * dist;
         const cy = Math.sin(pitch) * dist;
         const cz = Math.cos(pitch) * Math.sin(yaw) * dist;
-        const camPos = [cx, cy, cz];
+        const camPos = [target[0] + cx, target[1] + cy, target[2] + cz];
 
         gl.uniform2f(gl.getUniformLocation(program, "u_res"), canvas.width, canvas.height);
         gl.uniform3f(gl.getUniformLocation(program, "u_camPos"), camPos[0], camPos[1], camPos[2]);
-        gl.uniform3f(gl.getUniformLocation(program, "u_camTarget"), 0, 0, 0);
+        gl.uniform3f(gl.getUniformLocation(program, "u_camTarget"), target[0], target[1], target[2]);
         gl.uniform3f(gl.getUniformLocation(program, "u_camUp"), 0, 1, 0);
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
