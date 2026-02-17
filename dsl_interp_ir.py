@@ -41,6 +41,12 @@ def eval_ir(node: IR, env: Dict[str, Vec]) -> float | Vec:
         return math.sin(float(eval_ir(node.args[0], env)))
     if op == "cos":
         return math.cos(float(eval_ir(node.args[0], env)))
+    if op == "atan2":
+        y = float(eval_ir(node.args[0], env))
+        x = float(eval_ir(node.args[1], env))
+        return math.atan2(y, x)
+    if op == "floor":
+        return math.floor(float(eval_ir(node.args[0], env)))
     if op == "vec_add":
         a = eval_ir(node.args[0], env)
         b = eval_ir(node.args[1], env)

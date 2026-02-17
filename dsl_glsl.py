@@ -38,6 +38,10 @@ def emit_expr(node: IR) -> str:
         return f"sin({emit_expr(node.args[0])})"
     if op == "cos":
         return f"cos({emit_expr(node.args[0])})"
+    if op == "atan2":
+        return f"atan({emit_expr(node.args[0])}, {emit_expr(node.args[1])})"
+    if op == "floor":
+        return f"floor({emit_expr(node.args[0])})"
     if op == "vec_add":
         return f"({emit_expr(node.args[0])} + {emit_expr(node.args[1])})"
     if op == "vec_sub":

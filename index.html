@@ -97,6 +97,8 @@
       <div class="hint">Drag to orbit. Wheel to zoom.</div>
       <div class="hint">Errors:</div>
       <pre id="errors"></pre>
+      <div class="hint">Render timings:</div>
+      <pre id="perf"></pre>
     </div>
     <canvas id="canvas"></canvas>
 
@@ -108,6 +110,11 @@
       const generateBtn = document.getElementById("generateBtn");
       const codeEl = document.getElementById("code");
       const promptEl = document.getElementById("prompt");
+      const perfEl = document.getElementById("perf");
+
+      window.addEventListener("error", (e) => {
+        errors.textContent = "JS error: " + (e.message || "unknown");
+      });
 
       if (!gl) {
         errors.textContent = "WebGL2 not supported.";
@@ -185,6 +192,9 @@
       `;
 
       let program = null;
+      let pendingFirstFrame = false;
+      let renderStart = 0;
+      let perfData = null;
 
       function resize() {
         const dpr = window.devicePixelRatio || 1;
@@ -220,18 +230,38 @@
 
       async function render() {
         errors.textContent = "";
+        perfEl.textContent = "render: starting...";
         const code = codeEl.value;
-        const res = await fetch("http://localhost:8001/compile", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code }),
-        });
-        const data = await res.json();
+        renderStart = performance.now();
+        let res;
+        let data;
+        try {
+          perfEl.textContent = "render: waiting for compile response...";
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          res = await fetch("http://localhost:8001/compile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          perfEl.textContent = "render: parsing response...";
+          data = await res.json();
+        } catch (err) {
+          const msg = err.name === "AbortError" ? "Compile request timed out" : err.message;
+          errors.textContent = "Network error: " + msg;
+          return;
+        }
+        const fetchMs = performance.now() - renderStart;
         if (!res.ok) {
           errors.textContent = data.detail || data.error || "Compile failed.";
           return;
         }
 
+        perfEl.textContent = "render: compiling shader...";
+
+        const compileStart = performance.now();
         const frag = FRAG_HEADER + data.glsl + FRAG_FOOTER;
         const vs = compileShader(gl.VERTEX_SHADER, VERT);
         if (!vs.ok) {
@@ -248,9 +278,15 @@
           errors.textContent = linked.msg;
           return;
         }
+        const compileMs = performance.now() - compileStart;
 
         program = linked.p;
         gl.useProgram(program);
+        perfData = {
+          fetchMs,
+          compileMs,
+        };
+        pendingFirstFrame = true;
 
         const quad = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, quad);
@@ -309,6 +345,14 @@
         gl.uniform3f(gl.getUniformLocation(program, "u_camUp"), 0, 1, 0);
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        if (pendingFirstFrame && perfData) {
+          const totalMs = performance.now() - renderStart;
+          perfEl.textContent =
+            "compile fetch: " + perfData.fetchMs.toFixed(2) + " ms\n" +
+            "shader compile/link: " + perfData.compileMs.toFixed(2) + " ms\n" +
+            "time to first frame: " + totalMs.toFixed(2) + " ms";
+          pendingFirstFrame = false;
+        }
         requestAnimationFrame(frame);
       }
 

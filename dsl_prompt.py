@@ -14,6 +14,7 @@ Primitives:
   hex_nut(ro, ri, h)  -- Hex nut (hex prism with cylindrical hole), ro outer radius, ri hole radius, half-height h (Y axis)
   line(a, b)          -- Path line from vec3 a to vec3 b
   polyline(a, b, ...) -- Path polyline through vec3 points
+  helix(r, pitch, turns) -- Path helix around Y axis
 
 Operations:
   union(a, b, ...)    -- Combine shapes (min distance)
@@ -59,4 +60,7 @@ Examples:
 
   English: "a smoothed sweep"
   DSL: sweep(circle(0.2), polyline(vec3(0,0,0), vec3(1,0,0), vec3(1,1,0)))
+
+  English: "a thread-like sweep"
+  DSL: sweep(polygon(vec2(0.0,0.1), vec2(-0.1,-0.1), vec2(0.1,-0.1)), helix(0.6, 0.2, 6))
 """

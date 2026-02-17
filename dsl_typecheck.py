@@ -88,6 +88,14 @@ def type_of(expr: Expr) -> Type:
                 if got != VEC3:
                     raise TypeError(f"polyline arg {idx} expects vec3, got {got.name}")
             return PATH
+        if expr.name == "helix":
+            if len(expr.args) != 3:
+                raise TypeError("helix expects 3 args")
+            for idx, arg in enumerate(expr.args):
+                got = type_of(arg)
+                if got != F32:
+                    raise TypeError(f"helix arg {idx} expects f32, got {got.name}")
+            return PATH
         if expr.name == "extrude":
             if len(expr.args) != 2:
                 raise TypeError("extrude expects 2 args")

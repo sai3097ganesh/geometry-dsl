@@ -91,7 +91,7 @@ def _extract_polygon(expr: Expr) -> List[Vec2T]:
 
 def _extract_path(expr: Expr) -> List[Vec3T]:
     if not isinstance(expr, Call):
-        raise ValueError("sweep expects line(...) or polyline(...) as second arg")
+        raise ValueError("sweep expects line(...), polyline(...), or helix(...) as second arg")
     if expr.name == "line":
         if len(expr.args) != 2:
             raise ValueError("line expects 2 args")
@@ -100,7 +100,34 @@ def _extract_path(expr: Expr) -> List[Vec3T]:
         if len(expr.args) < 2:
             raise ValueError("polyline expects at least 2 args")
         return [_extract_vec3(a) for a in expr.args]
-    raise ValueError("sweep expects line(...) or polyline(...) as second arg")
+    if expr.name == "helix":
+        return _extract_helix_polyline(expr)
+    raise ValueError("sweep expects line(...), polyline(...), or helix(...) as second arg")
+
+
+def _extract_helix_params(expr: Call) -> tuple[float, float, float]:
+    if len(expr.args) != 3:
+        raise ValueError("helix expects 3 args")
+    radius = _extract_number(expr.args[0], "helix arg 0")
+    pitch = _extract_number(expr.args[1], "helix arg 1")
+    turns = _extract_number(expr.args[2], "helix arg 2")
+    return radius, pitch, turns
+
+
+def _extract_helix_polyline(expr: Call) -> List[Vec3T]:
+    radius, pitch, turns = _extract_helix_params(expr)
+    segments_per_turn = 24
+    steps = max(1, int(math.ceil(segments_per_turn * max(turns, 0.0))))
+    total_angle = 6.283185307179586 * turns
+    angle_step = total_angle / steps if steps > 0 else 0.0
+    points: List[Vec3T] = []
+    for i in range(steps + 1):
+        angle = angle_step * i
+        y = pitch * angle / 6.283185307179586
+        x = radius * math.cos(angle)
+        z = radius * math.sin(angle)
+        points.append((x, y, z))
+    return points
 
 
 def _hexagon_vertices(radius: float) -> List[Vec2T]:
@@ -155,6 +182,13 @@ def _ir_dot3_const(vec: IR, cx: float, cy: float, cz: float) -> IR:
     dx = ir_mul(ir_const(cx), vx)
     dy = ir_mul(ir_const(cy), vy)
     dz = ir_mul(ir_const(cz), vz)
+    return ir_binary("add", ir_binary("add", dx, dy, "f32"), dz, "f32")
+
+
+def _ir_dot3(a: IR, b: IR, c: IR, x: IR, y: IR, z: IR) -> IR:
+    dx = ir_mul(a, x)
+    dy = ir_mul(b, y)
+    dz = ir_mul(c, z)
     return ir_binary("add", ir_binary("add", dx, dy, "f32"), dz, "f32")
 
 
@@ -285,9 +319,6 @@ def lower(expr: Expr) -> IR:
                 raise ValueError("sweep expects 2 args")
             profile = expr.args[0]
             path_expr = expr.args[1]
-            path = _extract_path(path_expr)
-            if len(path) < 2:
-                raise ValueError("sweep path must have at least 2 points")
 
             profile_kind = ""
             profile_poly: List[Vec2T] = []
@@ -302,6 +333,99 @@ def lower(expr: Expr) -> IR:
                 profile_radius = _extract_number(profile.args[0], "circle arg 0")
             else:
                 raise ValueError("sweep expects polygon(...) or circle(...) as first arg")
+
+            if isinstance(path_expr, Call) and path_expr.name == "helix":
+                radius, pitch, turns = _extract_helix_params(path_expr)
+                two_pi = 6.283185307179586
+                h = pitch / two_pi
+                total_angle = two_pi * max(turns, 0.0)
+
+                p = ir_var("p")
+                p_x = ir_unary("vec_x", p, "f32")
+                p_y = ir_unary("vec_y", p, "f32")
+                p_z = ir_unary("vec_z", p, "f32")
+
+                angle = ir_binary("atan2", p_z, p_x, "f32")
+                angle_div = ir_mul(angle, ir_const(1.0 / two_pi))
+                angle_mod = ir_binary(
+                    "sub",
+                    angle,
+                    ir_mul(ir_const(two_pi), ir_unary("floor", angle_div, "f32")),
+                    "f32",
+                )
+
+                y_over_h = ir_mul(p_y, ir_const(1.0 / h)) if h != 0.0 else ir_const(0.0)
+                k_num = ir_binary("sub", y_over_h, angle_mod, "f32")
+                k_div = ir_mul(k_num, ir_const(1.0 / two_pi))
+                k = ir_unary("floor", ir_binary("add", k_div, ir_const(0.5), "f32"), "f32")
+
+                t = ir_binary("add", angle_mod, ir_mul(ir_const(two_pi), k), "f32")
+                if total_angle > 0.0:
+                    t = ir_binary(
+                        "min",
+                        ir_binary("max", t, ir_const(0.0), "f32"),
+                        ir_const(total_angle),
+                        "f32",
+                    )
+
+                sin_t = ir_unary("sin", t, "f32")
+                cos_t = ir_unary("cos", t, "f32")
+
+                hx = ir_mul(ir_const(radius), cos_t)
+                hz = ir_mul(ir_const(radius), sin_t)
+                hy = ir_mul(ir_const(h), t)
+                helix_pos = ir_vec3(hx, hy, hz)
+                q = ir_vec_op("vec_sub", p, helix_pos)
+
+                if profile_kind == "circle":
+                    d = ir_binary(
+                        "sub",
+                        ir_unary("length", q, "f32"),
+                        ir_const(profile_radius),
+                        "f32",
+                    )
+                else:
+                    inv_tlen = 0.0
+                    tlen = (radius * radius + h * h) ** 0.5
+                    if tlen > 0.0:
+                        inv_tlen = 1.0 / tlen
+
+                    nx = cos_t
+                    ny = ir_const(0.0)
+                    nz = sin_t
+
+                    tx = ir_mul(ir_const(-radius * inv_tlen), sin_t)
+                    ty = ir_const(h * inv_tlen)
+                    tz = ir_mul(ir_const(radius * inv_tlen), cos_t)
+
+                    bx = ir_mul(ty, nz)
+                    by = ir_binary("sub", ir_mul(tz, nx), ir_mul(tx, nz), "f32")
+                    bz = ir_mul(ir_unary("neg", ty, "f32"), nx)
+
+                    qx = ir_unary("vec_x", q, "f32")
+                    qy = ir_unary("vec_y", q, "f32")
+                    qz = ir_unary("vec_z", q, "f32")
+
+                    px = _ir_dot3(qx, qy, qz, nx, ny, nz)
+                    py = _ir_dot3(qx, qy, qz, bx, by, bz)
+                    qt = _ir_dot3(qx, qy, qz, tx, ty, tz)
+
+                    profile_d = _ir_polygon_sdf(profile_poly, px, py)
+                    d = ir_binary("max", profile_d, ir_unary("abs", qt, "f32"), "f32")
+
+                if total_angle > 0.0:
+                    d_cap = ir_binary(
+                        "max",
+                        ir_unary("neg", p_y, "f32"),
+                        ir_binary("sub", p_y, ir_const(h * total_angle), "f32"),
+                        "f32",
+                    )
+                    d = ir_binary("max", d, d_cap, "f32")
+                return d
+
+            path = _extract_path(path_expr)
+            if len(path) < 2:
+                raise ValueError("sweep path must have at least 2 points")
 
             segments = []
             for i in range(len(path) - 1):
