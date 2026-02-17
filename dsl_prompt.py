@@ -24,6 +24,7 @@ Operations:
   translate(shape, v) -- Move shape by vector v
   extrude(profile, h) -- Extrude polygon or circle with half-height h
   sweep(profile, path) -- Sweep a 2D profile along a path
+  blend2D(p1, p2, path) -- Morph from profile p1 to p2 along a path
   vec2(x, y)          -- Create a 2D vector
   vec3(x, y, z)       -- Create a 3D vector
 
@@ -63,4 +64,10 @@ Examples:
 
   English: "a thread-like sweep"
   DSL: sweep(polygon(vec2(0.0,0.1), vec2(-0.1,-0.1), vec2(0.1,-0.1)), helix(0.6, 0.2, 6))
+
+  English: "circle morphing to square"
+  DSL: blend2D(circle(1), polygon(vec2(-1,-1), vec2(1,-1), vec2(1,1), vec2(-1,1)), line(vec3(0,-2,0), vec3(0,2,0)))
+
+  English: "tapered cylinder"
+  DSL: blend2D(circle(0.5), circle(1.5), line(vec3(0,0,0), vec3(0,3,0)))
 """

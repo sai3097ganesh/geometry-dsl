@@ -196,6 +196,20 @@ def _ir_clamp01(val: IR) -> IR:
     return ir_binary("min", ir_binary("max", val, ir_const(0.0), "f32"), ir_const(1.0), "f32")
 
 
+def _ir_blend_sdf(sdf1: IR, sdf2: IR, t: IR) -> IR:
+    """Linearly interpolate between two SDFs: (1-t)*sdf1 + t*sdf2."""
+    one_minus_t = ir_binary("sub", ir_const(1.0), t, "f32")
+    term1 = ir_mul(one_minus_t, sdf1)
+    term2 = ir_mul(t, sdf2)
+    return ir_binary("add", term1, term2, "f32")
+
+
+def _ir_circle_sdf(radius: float, px: IR, py: IR) -> IR:
+    """Compute 2D circle SDF given local 2D coordinates."""
+    radial = ir_unary("length", ir_vec3(px, py, ir_const(0.0)), "f32")
+    return ir_binary("sub", radial, ir_const(radius), "f32")
+
+
 def _ir_smin(a: IR, b: IR, k: float) -> IR:
     if k <= 0.0:
         return ir_binary("min", a, b, "f32")
@@ -314,6 +328,141 @@ def lower(expr: Expr) -> IR:
             hole_half_h = half_h + 0.01
             hole = Call("cylinder", [Number(inner_r), Number(hole_half_h)])
             return lower(Call("difference", [prism, hole]))
+        if name == "blend2D":
+            if len(expr.args) != 3:
+                raise ValueError("blend2D expects 3 args: profile1, profile2, path")
+            
+            profile1 = expr.args[0]
+            profile2 = expr.args[1]
+            path_expr = expr.args[2]
+            
+            # Extract both profiles
+            def get_profile_data(profile: Expr) -> tuple[str, List[Vec2T] | float]:
+                if isinstance(profile, Call):
+                    if profile.name == "polygon":
+                        return ("polygon", _extract_polygon(profile))
+                    elif profile.name == "circle":
+                        if len(profile.args) != 1:
+                            raise ValueError("circle expects 1 arg")
+                        return ("circle", _extract_number(profile.args[0], "circle radius"))
+                raise ValueError("blend2D expects polygon(...) or circle(...) profiles")
+            
+            profile1_kind, profile1_data = get_profile_data(profile1)
+            profile2_kind, profile2_data = get_profile_data(profile2)
+            
+            # Extract path
+            path = _extract_path(path_expr)
+            if len(path) < 2:
+                raise ValueError("blend2D path must have at least 2 points")
+            
+            # Compute total path length for global t parameter
+            segments = []
+            total_length = 0.0
+            for i in range(len(path) - 1):
+                ax, ay, az = path[i]
+                bx, by, bz = path[i + 1]
+                abx = bx - ax
+                aby = by - ay
+                abz = bz - az
+                seg_len = math.sqrt(abx * abx + aby * aby + abz * abz)
+                if seg_len == 0.0:
+                    continue
+                segments.append((ax, ay, az, bx, by, bz, abx, aby, abz, seg_len, total_length))
+                total_length += seg_len
+            
+            if not segments:
+                raise ValueError("blend2D path has no valid segments")
+            
+            if total_length == 0.0:
+                raise ValueError("blend2D path has zero length")
+            
+            inv_total_length = 1.0 / total_length
+            
+            p = ir_var("p")
+            cur = None
+            
+            for seg_data in segments:
+                ax, ay, az, bx, by, bz, abx, aby, abz, seg_len, cum_len = seg_data
+                
+                # Tangent vector
+                tx = abx / seg_len
+                ty = aby / seg_len
+                tz = abz / seg_len
+                
+                # Compute normal and binormal for local frame
+                upx, upy, upz = 0.0, 1.0, 0.0
+                if abs(tx * upx + ty * upy + tz * upz) > 0.999:
+                    upx, upy, upz = 1.0, 0.0, 0.0
+                
+                nx = upy * tz - upz * ty
+                ny = upz * tx - upx * tz
+                nz = upx * ty - upy * tx
+                nlen = math.sqrt(nx * nx + ny * ny + nz * nz)
+                if nlen == 0.0:
+                    continue
+                nx /= nlen
+                ny /= nlen
+                nz /= nlen
+                
+                bxv = ty * nz - tz * ny
+                byv = tz * nx - tx * nz
+                bzv = tx * ny - ty * nx
+                
+                # Project point onto segment
+                a_vec = ir_vec3(ir_const(ax), ir_const(ay), ir_const(az))
+                pa = ir_vec_op("vec_sub", p, a_vec)
+                dot_pa_ab = _ir_dot3_const(pa, abx, aby, abz)
+                seg_len_sq = seg_len * seg_len
+                t_seg = ir_mul(dot_pa_ab, ir_const(1.0 / seg_len_sq))
+                t_seg_clamped = _ir_clamp01(t_seg)
+                
+                # Closest point on segment
+                ab_scaled = ir_vec3(
+                    ir_mul(ir_const(abx), t_seg_clamped),
+                    ir_mul(ir_const(aby), t_seg_clamped),
+                    ir_mul(ir_const(abz), t_seg_clamped),
+                )
+                c = ir_vec_op("vec_add", a_vec, ab_scaled)
+                q = ir_vec_op("vec_sub", p, c)
+                
+                # Local 2D coordinates in profile plane
+                px = _ir_dot3_const(q, nx, ny, nz)
+                py = _ir_dot3_const(q, bxv, byv, bzv)
+                qt = _ir_dot3_const(q, tx, ty, tz)
+                
+                # Global t parameter (0 at start, 1 at end of path)
+                # t_global = (cum_len + t_seg * seg_len) / total_length
+                t_offset = ir_mul(t_seg_clamped, ir_const(seg_len))
+                t_global = ir_mul(
+                    ir_binary("add", ir_const(cum_len), t_offset, "f32"),
+                    ir_const(inv_total_length)
+                )
+                
+                # Compute SDF for profile1
+                if profile1_kind == "circle":
+                    sdf1 = _ir_circle_sdf(profile1_data, px, py)
+                else:
+                    sdf1 = _ir_polygon_sdf(profile1_data, px, py)
+                
+                # Compute SDF for profile2
+                if profile2_kind == "circle":
+                    sdf2 = _ir_circle_sdf(profile2_data, px, py)
+                else:
+                    sdf2 = _ir_polygon_sdf(profile2_data, px, py)
+                
+                # Blend profiles based on global t
+                profile_blend = _ir_blend_sdf(sdf1, sdf2, t_global)
+                
+                # Combine with tangential distance (cap ends)
+                seg = ir_binary("max", profile_blend, ir_unary("abs", qt, "f32"), "f32")
+                
+                # Accumulate segments with min
+                if cur is None:
+                    cur = seg
+                else:
+                    cur = ir_binary("min", cur, seg, "f32")
+            
+            return cur
         if name == "sweep":
             if len(expr.args) != 2:
                 raise ValueError("sweep expects 2 args")
