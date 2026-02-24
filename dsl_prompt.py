@@ -30,9 +30,16 @@ Operations:
 
 Rules:
 - Output ONLY the DSL expression (no markdown, no backticks, no explanation)
-- Single expression only
+- You may output either:
+  1) A single expression, OR
+  2) Multi-line statements with assignments and a final return:
+     name = <expr>
+     ...
+     return a, b, c
 - Use integers or floats for numbers
 - Spaces around commas are optional
+- If using statements, always end with exactly one return statement
+- Use variables only after they are defined
 
 Examples:
   English: "a small sphere"
@@ -70,4 +77,11 @@ Examples:
 
   English: "tapered cylinder"
   DSL: blend2D(circle(0.5), circle(1.5), line(vec3(0,0,0), vec3(0,3,0)))
+
+  English: "four separated shapes combined"
+  DSL: a = sphere(0.5)
+  b = translate(box(vec3(0.4,0.4,0.4)), vec3(1.2,0,0))
+  c = translate(cylinder(0.25,0.5), vec3(-1.2,0,0))
+  d = translate(sphere(0.35), vec3(0,0,1.2))
+  return a, b, c, d
 """
