@@ -10,7 +10,7 @@ Primitives:
   circle(r)           -- 2D circle profile for sweep
   cylinder(r, h)      -- Capped cylinder, radius r, half-height h (Y axis)
   box(vec3)           -- AABB box with half-size vec3
-  polygon(vec2, ...)  -- Convex, non-self-intersecting polygon (2D), also a sweep profile
+  polygon(vec2, ...)  -- Simple (non-self-intersecting) polygon (2D), convex or concave, also a sweep profile
   hex_nut(ro, ri, h)  -- Hex nut (hex prism with cylindrical hole), ro outer radius, ri hole radius, half-height h (Y axis)
   line(a, b)          -- Path line from vec3 a to vec3 b
   polyline(a, b, ...) -- Path polyline through vec3 points

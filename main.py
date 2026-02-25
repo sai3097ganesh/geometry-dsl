@@ -102,6 +102,31 @@ def test_infix_parentheses_grouping() -> None:
     assert "float field" in code
 
 
+def test_concave_polygon_extrude() -> None:
+    src = (
+        "extrude(polygon(vec2(-1,-1), vec2(1,-1), vec2(1,0), vec2(0,0), "
+        "vec2(0,1), vec2(-1,1)), 0.5)"
+    )
+    ast = Parser.from_source(src).parse()
+    assert type_of(ast) == FIELD
+    ir = lower(ast)
+    code = emit_glsl(ir)
+    assert "float field" in code
+
+
+def test_concave_polygon_sweep() -> None:
+    src = (
+        "sweep(polygon(vec2(-0.8,-0.8), vec2(0.8,-0.8), vec2(0.8,-0.2), "
+        "vec2(-0.2,-0.2), vec2(-0.2,0.8), vec2(-0.8,0.8)), "
+        "line(vec3(0,0,0), vec3(0,2,0)))"
+    )
+    ast = Parser.from_source(src).parse()
+    assert type_of(ast) == FIELD
+    ir = lower(ast)
+    code = emit_glsl(ir)
+    assert "float field" in code
+
+
 def run_all() -> None:
     test_lexer_and_parser()
     test_typecheck()
@@ -114,6 +139,8 @@ def run_all() -> None:
     test_assignment_return_unknown_var()
     test_infix_union_difference()
     test_infix_parentheses_grouping()
+    test_concave_polygon_extrude()
+    test_concave_polygon_sweep()
     print("ok")
 
 

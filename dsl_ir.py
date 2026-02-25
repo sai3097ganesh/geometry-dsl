@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 
 from dsl_ast import Call, Expr, Number, Vec2, Vec3
-from dsl_geom import check_polygon_simple, ensure_ccw, is_convex
+from dsl_geom import check_polygon_simple, ensure_ccw, triangulate_polygon
 
 Vec2T = Tuple[float, float]
 Vec3T = Tuple[float, float, float]
@@ -84,8 +84,6 @@ def _extract_polygon(expr: Expr) -> List[Vec2T]:
         raise ValueError("polygon expects at least 3 args")
     poly = [_extract_vec2(a) for a in expr.args]
     check_polygon_simple(poly)
-    if not is_convex(poly):
-        raise ValueError("polygon must be convex")
     return ensure_ccw(poly)
 
 
@@ -169,8 +167,19 @@ def _ir_polygon_sdf(poly: List[Vec2T], px: IR, py: IR) -> IR:
     return max_d
 
 
+def _ir_polygon_profile_sdf(poly: List[Vec2T], px: IR, py: IR) -> IR:
+    tris = triangulate_polygon(poly)
+    cur = None
+    for a, b, c in tris:
+        tri_sdf = _ir_polygon_sdf([a, b, c], px, py)
+        cur = tri_sdf if cur is None else ir_binary("min", cur, tri_sdf, "f32")
+    if cur is None:
+        raise ValueError("polygon triangulation failed")
+    return cur
+
+
 def _ir_prism_sdf(poly: List[Vec2T], h: IR, px: IR, py: IR, axis: IR) -> IR:
-    max_d = _ir_polygon_sdf(poly, px, py)
+    max_d = _ir_polygon_profile_sdf(poly, px, py)
     d_axis = ir_binary("sub", ir_unary("abs", axis, "f32"), h, "f32")
     return ir_binary("max", max_d, d_axis, "f32")
 
@@ -442,13 +451,13 @@ def lower(expr: Expr) -> IR:
                 if profile1_kind == "circle":
                     sdf1 = _ir_circle_sdf(profile1_data, px, py)
                 else:
-                    sdf1 = _ir_polygon_sdf(profile1_data, px, py)
+                    sdf1 = _ir_polygon_profile_sdf(profile1_data, px, py)
                 
                 # Compute SDF for profile2
                 if profile2_kind == "circle":
                     sdf2 = _ir_circle_sdf(profile2_data, px, py)
                 else:
-                    sdf2 = _ir_polygon_sdf(profile2_data, px, py)
+                    sdf2 = _ir_polygon_profile_sdf(profile2_data, px, py)
                 
                 # Blend profiles based on global t
                 profile_blend = _ir_blend_sdf(sdf1, sdf2, t_global)
@@ -559,7 +568,7 @@ def lower(expr: Expr) -> IR:
                     py = _ir_dot3(qx, qy, qz, bx, by, bz)
                     qt = _ir_dot3(qx, qy, qz, tx, ty, tz)
 
-                    profile_d = _ir_polygon_sdf(profile_poly, px, py)
+                    profile_d = _ir_polygon_profile_sdf(profile_poly, px, py)
                     d = ir_binary("max", profile_d, ir_unary("abs", qt, "f32"), "f32")
 
                 if total_angle > 0.0:
@@ -659,7 +668,7 @@ def lower(expr: Expr) -> IR:
                         profile_d = ir_binary("sub", radial, ir_const(profile_radius), "f32")
                         seg = ir_binary("max", profile_d, ir_unary("abs", qt, "f32"), "f32")
                 else:
-                    profile_d = _ir_polygon_sdf(profile_poly, px, py)
+                    profile_d = _ir_polygon_profile_sdf(profile_poly, px, py)
                     seg = ir_binary("max", profile_d, ir_unary("abs", qt, "f32"), "f32")
 
                 if cur is None:
