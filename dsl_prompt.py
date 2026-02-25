@@ -19,6 +19,7 @@ Primitives:
 Operations:
   union(a, b, ...)    -- Combine shapes (min distance)
   difference(a, b)    -- Subtract b from a
+  intersection(a, b, ...) -- Keep only overlapping volume (max distance)
   offset(shape, d)    -- Expand or contract shape by distance d
   rotate(shape, v)    -- Rotate shape by vec3 angles in degrees
   translate(shape, v) -- Move shape by vector v
@@ -35,10 +36,10 @@ Dimensional / type categories:
 - 2D profile: circle(...), polygon(...)
 - 1D path: line(...), polyline(...), helix(...)
 - 3D shape (field): sphere(...), cylinder(...), box(...), hex_nut(...),
-  and results of union/difference/offset/rotate/translate/extrude/sweep/blend2D
+  and results of union/difference/intersection/offset/rotate/translate/extrude/sweep/blend2D
 
 Type compatibility rules:
-- union, difference, offset, rotate, translate operate on 3D shapes (fields)
+- union, difference, intersection, offset, rotate, translate operate on 3D shapes (fields)
 - extrude(profile, h): profile must be a 2D profile (circle or polygon)
 - sweep(profile, path): profile must be 2D profile, path must be 1D path
 - blend2D(p1, p2, path): p1/p2 must be 2D profiles, path must be 1D path

@@ -291,6 +291,13 @@ def lower(expr: Expr) -> IR:
             a = lower(expr.args[0])
             b = lower(expr.args[1])
             return ir_binary("max", a, ir_unary("neg", b, "f32"), "f32")
+        if name == "intersection":
+            if len(expr.args) < 2:
+                raise ValueError("intersection expects at least 2 args")
+            cur = lower(expr.args[0])
+            for arg in expr.args[1:]:
+                cur = ir_binary("max", cur, lower(arg), "f32")
+            return cur
         if name == "polygon":
             raise ValueError("polygon must be used with extrude")
         if name == "line" or name == "polyline":

@@ -58,6 +58,14 @@ def type_of(expr: Expr) -> Type:
                 if got != FIELD:
                     raise TypeError(f"union arg {idx} expects field, got {got.name}")
             return FIELD
+        if expr.name == "intersection":
+            if len(expr.args) < 2:
+                raise TypeError("intersection expects at least 2 args")
+            for idx, arg in enumerate(expr.args):
+                got = type_of(arg)
+                if got != FIELD:
+                    raise TypeError(f"intersection arg {idx} expects field, got {got.name}")
+            return FIELD
         if expr.name == "circle":
             if len(expr.args) != 1:
                 raise TypeError("circle expects 1 arg")

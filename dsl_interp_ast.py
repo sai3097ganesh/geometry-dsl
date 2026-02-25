@@ -171,6 +171,11 @@ def eval_expr(expr: Expr) -> Value:
         if name == "difference":
             a, b = args  # type: ignore[misc]
             return lambda p: max(a(p), -b(p))
+        if name == "intersection":
+            if len(args) < 2:
+                raise EvalError("intersection expects at least 2 args")
+            fields = args  # type: ignore[assignment]
+            return lambda p: max(f(p) for f in fields)
         if name == "rotate":
             g, v = args  # type: ignore[misc]
             return lambda p: g(rotate_vec_deg(p, v))

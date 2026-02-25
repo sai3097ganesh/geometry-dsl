@@ -127,6 +127,17 @@ def test_concave_polygon_sweep() -> None:
     assert "float field" in code
 
 
+def test_intersection() -> None:
+    src = "intersection(sphere(2), box(vec3(1.5,1.5,1.5)))"
+    ast = Parser.from_source(src).parse()
+    assert type_of(ast) == FIELD
+    ir = lower(ast)
+    code = emit_glsl(ir)
+    assert "float field" in code
+    v = eval_ir(ir, {"p": (0.0, 0.0, 0.0)})
+    assert abs(v - (-1.5)) < 1e-6
+
+
 def run_all() -> None:
     test_lexer_and_parser()
     test_typecheck()
@@ -141,6 +152,7 @@ def run_all() -> None:
     test_infix_parentheses_grouping()
     test_concave_polygon_extrude()
     test_concave_polygon_sweep()
+    test_intersection()
     print("ok")
 
 
