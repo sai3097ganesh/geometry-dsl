@@ -58,6 +58,32 @@ def test_hex_nut_emit() -> None:
     assert "float field" in code
 
 
+def test_assignment_return_program() -> None:
+    src = """
+    a = sphere(1)
+    b = translate(a, vec3(2,0,0))
+    c = box(vec3(0.5,0.5,0.5))
+    return a, b, c
+    """
+    ast = Parser.from_source(src).parse()
+    assert type_of(ast) == FIELD
+    ir = lower(ast)
+    code = emit_glsl(ir)
+    assert "float field" in code
+
+
+def test_assignment_return_unknown_var() -> None:
+    src = """
+    a = sphere(1)
+    return a, b
+    """
+    try:
+        Parser.from_source(src).parse()
+        assert False, "Expected parser error for unknown variable"
+    except Exception:
+        pass
+
+
 def run_all() -> None:
     test_lexer_and_parser()
     test_typecheck()
@@ -66,6 +92,8 @@ def run_all() -> None:
     test_glsl_emit()
     test_extrude_emit()
     test_hex_nut_emit()
+    test_assignment_return_program()
+    test_assignment_return_unknown_var()
     print("ok")
 
 

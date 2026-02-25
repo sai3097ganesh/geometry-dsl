@@ -81,6 +81,8 @@ class Lexer:
             else:
                 break
         lex = self.src[start_i:self.i]
+        if lex == "return":
+            return Token("RETURN", lex, None, self.line, start_col)
         return Token("IDENT", lex, None, self.line, start_col)
 
     def tokenize(self) -> List[Token]:
@@ -116,5 +118,9 @@ class Lexer:
             if ch == ",":
                 self._advance()
                 tokens.append(Token("COMMA", ",", None, self.line, self.col - 1))
+                continue
+            if ch == "=":
+                self._advance()
+                tokens.append(Token("EQUAL", "=", None, self.line, self.col - 1))
                 continue
             raise LexerError(f"Unexpected character {ch} at {self.line}:{self.col}")
