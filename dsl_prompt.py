@@ -28,6 +28,24 @@ Operations:
   vec2(x, y)          -- Create a 2D vector
   vec3(x, y, z)       -- Create a 3D vector
 
+Dimensional / type categories:
+- Scalar: numbers (e.g., 1, 0.5)
+- 2D vector: vec2(x, y)
+- 3D vector: vec3(x, y, z)
+- 2D profile: circle(...), polygon(...)
+- 1D path: line(...), polyline(...), helix(...)
+- 3D shape (field): sphere(...), cylinder(...), box(...), hex_nut(...),
+  and results of union/difference/offset/rotate/translate/extrude/sweep/blend2D
+
+Type compatibility rules:
+- union, difference, offset, rotate, translate operate on 3D shapes (fields)
+- extrude(profile, h): profile must be a 2D profile (circle or polygon)
+- sweep(profile, path): profile must be 2D profile, path must be 1D path
+- blend2D(p1, p2, path): p1/p2 must be 2D profiles, path must be 1D path
+- box requires box(vec3(...))
+- line/polyline points must be vec3(...)
+- polygon points must be vec2(...)
+
 Rules:
 - Output ONLY the DSL expression (no markdown, no backticks, no explanation)
 - You may output either:
@@ -40,6 +58,11 @@ Rules:
 - Spaces around commas are optional
 - If using statements, always end with exactly one return statement
 - Use variables only after they are defined
+- Infix operators are allowed for 3D shapes:
+  - a + b means union(a, b)
+  - a - b means difference(a, b)
+  - Parentheses are allowed and should be used to control grouping
+  - `+` and `-` are left-associative
 
 Examples:
   English: "a small sphere"
@@ -50,6 +73,15 @@ Examples:
   
   English: "a sphere with a box subtracted"
   DSL: difference(sphere(2), box(vec3(1,1,1)))
+
+  English: "union using infix operator"
+  DSL: sphere(1) + box(vec3(1,1,1))
+
+  English: "difference using infix operator"
+  DSL: sphere(2) - translate(sphere(1), vec3(0.5,0,0))
+
+  English: "grouped boolean operations"
+  DSL: sphere(2) - (box(vec3(0.8,0.8,0.8)) + translate(box(vec3(0.6,0.6,0.6)), vec3(1,0,0)))
 
   English: "a short cylinder"
   DSL: cylinder(1, 0.5)

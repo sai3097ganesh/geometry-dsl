@@ -119,6 +119,14 @@ class Lexer:
                 self._advance()
                 tokens.append(Token("COMMA", ",", None, self.line, self.col - 1))
                 continue
+            if ch == "+":
+                self._advance()
+                tokens.append(Token("PLUS", "+", None, self.line, self.col - 1))
+                continue
+            if ch == "-":
+                self._advance()
+                tokens.append(Token("MINUS", "-", None, self.line, self.col - 1))
+                continue
             if ch == "=":
                 self._advance()
                 tokens.append(Token("EQUAL", "=", None, self.line, self.col - 1))

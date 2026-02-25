@@ -84,6 +84,24 @@ def test_assignment_return_unknown_var() -> None:
         pass
 
 
+def test_infix_union_difference() -> None:
+    src = "sphere(2) - sphere(1) + box(vec3(0.5,0.5,0.5))"
+    ast = Parser.from_source(src).parse()
+    assert type_of(ast) == FIELD
+    ir = lower(ast)
+    code = emit_glsl(ir)
+    assert "float field" in code
+
+
+def test_infix_parentheses_grouping() -> None:
+    src = "sphere(2) - (sphere(1) + box(vec3(0.5,0.5,0.5)))"
+    ast = Parser.from_source(src).parse()
+    assert type_of(ast) == FIELD
+    ir = lower(ast)
+    code = emit_glsl(ir)
+    assert "float field" in code
+
+
 def run_all() -> None:
     test_lexer_and_parser()
     test_typecheck()
@@ -94,6 +112,8 @@ def run_all() -> None:
     test_hex_nut_emit()
     test_assignment_return_program()
     test_assignment_return_unknown_var()
+    test_infix_union_difference()
+    test_infix_parentheses_grouping()
     print("ok")
 
 

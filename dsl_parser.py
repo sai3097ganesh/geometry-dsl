@@ -38,11 +38,16 @@ class Parser:
             raise ParserError(f"Expected {kind} at {tok.line}:{tok.col}, got {tok.kind}")
         return self._advance()
 
-    def parse_expr(self, bindings: dict[str, Expr] | None = None) -> Expr:
+    def _parse_primary(self, bindings: dict[str, Expr] | None = None) -> Expr:
         tok = self._peek()
         if tok.kind == "NUMBER":
             self._advance()
             return Number(tok.value or 0.0)
+        if tok.kind == "LPAREN":
+            self._advance()
+            expr = self.parse_expr(bindings)
+            self._expect("RPAREN")
+            return expr
         if tok.kind == "IDENT":
             name = self._advance().lexeme
             if self._peek().kind == "LPAREN":
@@ -70,6 +75,23 @@ class Parser:
                 return copy.deepcopy(bindings[name])
             raise ParserError(f"Unexpected identifier {name} at {tok.line}:{tok.col}")
         raise ParserError(f"Unexpected token {tok.kind} at {tok.line}:{tok.col}")
+
+    def _parse_add_sub(self, bindings: dict[str, Expr] | None = None) -> Expr:
+        expr = self._parse_primary(bindings)
+        while self._peek().kind in ("PLUS", "MINUS"):
+            op = self._advance().kind
+            rhs = self._parse_primary(bindings)
+            if op == "PLUS":
+                if isinstance(expr, Call) and expr.name == "union":
+                    expr = Call("union", [*expr.args, rhs])
+                else:
+                    expr = Call("union", [expr, rhs])
+            else:
+                expr = Call("difference", [expr, rhs])
+        return expr
+
+    def parse_expr(self, bindings: dict[str, Expr] | None = None) -> Expr:
+        return self._parse_add_sub(bindings)
 
     def _parse_return_exprs(self, bindings: dict[str, Expr]) -> List[Expr]:
         self._expect("RETURN")
