@@ -93,6 +93,7 @@
       <div style="display: flex; gap: 8px;">
         <button id="renderBtn" style="flex: 1;">Render</button>
         <button id="generateBtn" style="flex: 1; background: #a78bfa;">Generate</button>
+        <button id="fitBtn" style="flex: 1; background: #60a5fa;">Fit to View</button>
       </div>
       <div class="hint">Drag to orbit. Wheel to zoom.</div>
       <div class="hint">Errors:</div>
@@ -108,6 +109,7 @@
       const errors = document.getElementById("errors");
       const renderBtn = document.getElementById("renderBtn");
       const generateBtn = document.getElementById("generateBtn");
+      const fitBtn = document.getElementById("fitBtn");
       const codeEl = document.getElementById("code");
       const promptEl = document.getElementById("prompt");
       const perfEl = document.getElementById("perf");
@@ -143,12 +145,12 @@
       const FRAG_FOOTER = `
       float raymarch(vec3 ro, vec3 rd) {
         float t = 0.0;
-        for (int i = 0; i < 128; i++) {
+        for (int i = 0; i < 192; i++) {
           vec3 p = ro + rd * t;
           float d = sdf(p);
           if (d < 0.001) return t;
           t += d;
-          if (t > 50.0) break;
+          if (t > 500.0) break;
         }
         return -1.0;
       }
@@ -300,6 +302,32 @@
         gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
       }
 
+      async function fitToView() {
+        const code = codeEl.value;
+        try {
+          const res = await fetch("http://localhost:8001/fit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            errors.textContent = data.detail || data.error || "Fit failed.";
+            return false;
+          }
+          if (Array.isArray(data.target) && data.target.length === 3) {
+            target = [data.target[0], data.target[1], data.target[2]];
+          }
+          if (typeof data.distance === "number" && Number.isFinite(data.distance)) {
+            dist = Math.max(0.5, Math.min(500.0, data.distance));
+          }
+          return true;
+        } catch (err) {
+          errors.textContent = `Network error: ${err.message}`;
+          return false;
+        }
+      }
+
       let yaw = 0.7;
       let pitch = 0.4;
       let dist = 4.0;
@@ -345,7 +373,7 @@
         lastY = e.clientY;
       });
       canvas.addEventListener("wheel", (e) => {
-        dist = Math.max(1.5, Math.min(10.0, dist + e.deltaY * 0.01));
+        dist = Math.max(0.5, Math.min(500.0, dist + e.deltaY * 0.01));
       });
 
       function frame() {
@@ -384,6 +412,10 @@
         });
       });
 
+      fitBtn.addEventListener("click", () => {
+        fitToView();
+      });
+
       async function generate() {
         errors.textContent = "";
         const prompt = promptEl.value.trim();
@@ -416,7 +448,8 @@
           codeEl.value = data.code;
           errors.textContent = "Generated successfully!";
           await new Promise(r => setTimeout(r, 500));
-          render();
+          await render();
+          await fitToView();
         } catch (err) {
           generateBtn.textContent = "Generate";
           generateBtn.disabled = false;
